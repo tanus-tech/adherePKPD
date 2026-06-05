@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2Y12 Population PK/PD Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0f0f0d;--paper:#f7f6f2;--paper2:#eeecea;--paper3:#e3e1dc;
+  --dim:#7a7872;--tic:#1a5fa0;--tic-lt:#d0e5f7;
+  --clop:#2d6b1a;--clop-lt:#d2eccc;--pras:#8b2010;--pras-lt:#f5dbd7;
+  --hpr:#c0392b;--lpr:#1a5fa0;--win:#1a7a3a;--acc:#b8860b;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:13px;line-height:1.5}
+.shell{display:flex;min-height:100vh}
+/* sidebar */
+.sb{width:250px;min-width:250px;background:var(--ink);color:var(--paper);padding:1.25rem .9rem;
+    display:flex;flex-direction:column;gap:1rem;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{font-family:var(--mono);font-size:.62rem;color:#666;letter-spacing:.1em;
+      border-bottom:.5px solid #222;padding-bottom:.85rem;line-height:1.7}
+.logo strong{color:var(--paper);font-size:.8rem;display:block;margin-bottom:.15rem}
+.sb-sec{border-top:.5px solid #1e1e1c;padding-top:.85rem}
+.sb-lbl{font-family:var(--mono);font-size:.58rem;color:#555;letter-spacing:.1em;
+        text-transform:uppercase;margin-bottom:.4rem}
+.dbtn{display:flex;align-items:center;gap:.45rem;width:100%;padding:.42rem .55rem;
+      border-radius:3px;border:none;background:transparent;color:#888;
+      font-family:var(--sans);font-size:.75rem;cursor:pointer;text-align:left;
+      transition:all .12s;margin-bottom:.15rem}
+.dbtn .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dbtn:hover{background:#1a1a18;color:var(--paper)}
+.dbtn.a-tic{background:var(--tic);color:#fff}
+.dbtn.a-clop{background:var(--clop);color:#fff}
+.dbtn.a-pras{background:var(--pras);color:#fff}
+.pbtn{display:block;width:100%;padding:.35rem .55rem;border:.5px solid #252523;border-radius:3px;
+      background:transparent;color:#777;font-family:var(--mono);font-size:.62rem;
+      cursor:pointer;text-align:left;margin-bottom:.18rem;transition:all .12s}
+.pbtn:hover{border-color:#555;color:var(--paper)}
+.pbtn.on{border-color:var(--acc);color:var(--acc);background:rgba(184,134,11,.07)}
+.ctrl-row{display:flex;align-items:center;gap:.4rem;margin-bottom:.15rem}
+.ctrl-row label{font-size:.68rem;color:#888;flex:1;line-height:1.3}
+.ctrl-row .cv{font-family:var(--mono);font-size:.68rem;color:var(--acc);min-width:32px;text-align:right}
+input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bottom:.4rem}
+.runbtn{width:100%;padding:.6rem;background:var(--acc);color:#fff;border:none;border-radius:3px;
+        font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;cursor:pointer;transition:opacity .12s}
+.runbtn:hover{opacity:.85}.runbtn:disabled{opacity:.35;cursor:not-allowed}
+/* main */
+.main{flex:1;padding:1.25rem;min-width:0}
+.ptitle{font-family:var(--mono);font-size:.62rem;color:var(--dim);letter-spacing:.08em;
+        text-transform:uppercase;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.dbadge{font-size:.6rem;padding:2px 7px;border-radius:2px;font-weight:600}
+.b-tic{background:var(--tic-lt);color:var(--tic)}.b-clop{background:var(--clop-lt);color:var(--clop)}.b-pras{background:var(--pras-lt);color:var(--pras)}
+/* metrics */
+.mrow{display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;margin-bottom:.85rem}
+.mi{background:#fff;border:.5px solid var(--paper3);border-radius:4px;padding:.5rem .65rem}
+.ml{font-size:.6rem;color:var(--dim);line-height:1.3}
+.mv{font-family:var(--mono);font-size:1rem;margin-top:.1rem;font-weight:500}
+.mv.red{color:var(--hpr)}.mv.grn{color:var(--win)}.mv.blu{color:var(--lpr)}.mv.acc{color:var(--acc)}
+/* panels */
+.pgrid{display:grid;gap:.75rem;margin-bottom:.75rem}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}.g1{grid-template-columns:1fr}
+.panel{background:#fff;border:.5px solid var(--paper3);border-radius:4px;padding:.75rem .85rem}
+.ph{font-family:var(--mono);font-size:.58rem;color:var(--dim);letter-spacing:.07em;
+    text-transform:uppercase;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
+.ph .src{font-size:.53rem;color:#ccc;font-style:italic}
+.ch{position:relative}.ch-sm{height:155px}.ch-md{height:185px}.ch-lg{height:215px}
+.zbar{display:flex;height:5px;border-radius:2px;overflow:hidden;gap:1px;margin:.3rem 0 .5rem}
+.z-h{background:var(--hpr)}.z-w{background:var(--win)}.z-l{background:var(--lpr)}
+.leg{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.3rem;font-size:.62rem;color:var(--dim)}
+.li{display:flex;align-items:center;gap:.25rem}
+.ll{width:16px;height:2px;display:inline-block;border-radius:1px}
+.ld{width:16px;height:0;display:inline-block;border-top:1.5px dashed}
+.lb{width:16px;height:7px;display:inline-block;opacity:.25;border-radius:1px}
+/* eq box */
+.eq{background:var(--paper2);border-radius:3px;padding:.5rem .65rem;font-family:var(--mono);
+    font-size:.62rem;line-height:1.9;color:#555;margin-top:.4rem}
+.eq em{color:var(--ink);font-style:normal;font-weight:500}
+/* param table */
+.pt{width:100%;border-collapse:collapse;font-size:.68rem}
+.pt td{padding:3px 5px;vertical-align:top}
+.pt td:first-child{color:var(--dim);font-family:var(--mono);white-space:nowrap}
+.pt tr:nth-child(even) td{background:var(--paper2)}
+/* insight */
+.ins{border-left:2px solid;padding:.55rem .7rem;font-size:.75rem;line-height:1.55;border-radius:0 3px 3px 0}
+.ins.danger{border-color:var(--hpr);background:#fef2f2}
+.ins.warn{border-color:var(--acc);background:#fefaec}
+.ins.ok{border-color:var(--win);background:#f0faf3}
+.ins.lpr{border-color:var(--lpr);background:#f0f7ff}
+/* PDC section */
+.pdc-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;align-items:start}
+.pdc-ctrl{display:flex;flex-direction:column;gap:.6rem}
+.pdc-out{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.pdc-item{background:var(--paper2);border-radius:3px;padding:.5rem .65rem}
+.pdc-lbl{font-size:.62rem;color:var(--dim);margin-bottom:.15rem}
+.pdc-val{font-family:var(--mono);font-size:1.1rem;font-weight:500;color:var(--ink)}
+.pdc-sub{font-size:.58rem;color:var(--dim);margin-top:.1rem}
+.pdc-note{font-size:.65rem;color:var(--dim);line-height:1.5;margin-top:.5rem;
+          padding:.45rem .6rem;background:var(--paper2);border-radius:3px}
+@media(max-width:820px){
+  .shell{flex-direction:column}.sb{width:100%;height:auto;position:static}
+  .g2,.g3{grid-template-columns:1fr}.mrow{grid-template-columns:repeat(3,1fr)}
+  .pdc-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="sb">
+<div class="logo">
+  <strong>P2Y12 PK/PD Explorer</strong>
+  Population simulation · n = 500<br>
+  Geometric mean + 5th–95th pctile
+</div>
+
+<div class="sb-sec">
+  <div class="sb-lbl">Drug</div>
+  <button class="dbtn a-tic" id="btn-tic"  onclick="selDrug('tic')"><span class="dot" style="background:var(--tic)"></span>Ticagrelor 90 mg BID</button>
+  <button class="dbtn"       id="btn-clop" onclick="selDrug('clop')"><span class="dot" style="background:var(--clop)"></span>Clopidogrel 75 mg QD</button>
+  <button class="dbtn"       id="btn-pras" onclick="selDrug('pras')"><span class="dot" style="background:var(--pras)"></span>Prasugrel 10 mg QD</button>
+</div>
+
+<div class="sb-sec">
+  <div class="sb-lbl">Adherence pattern</div>
+  <button class="pbtn on" id="p-perfect"  onclick="selPat('perfect',this)">Perfect (PDC=1.0)</button>
+  <button class="pbtn"    id="p-random"   onclick="selPat('random',this)">Random sparse (PDC≈0.75)</button>
+  <button class="pbtn"    id="p-cluster"  onclick="selPat('cluster',this)">Drug holiday (PDC-linked length)</button>
+  <button class="pbtn"    id="p-decay"    onclick="selPat('decay',this)">Gradual decay (PDC-linked rate)</button>
+  <button class="pbtn"    id="p-periodic" onclick="selPat('periodic',this)">Periodic gaps (PDC-linked)</button>
+  <button class="pbtn"    id="p-delayed"  onclick="selPat('delayed',this)">Delayed dose (BID only)</button>
+</div>
+
+<div class="sb-sec">
+  <div class="sb-lbl">Simulation</div>
+  <div class="ctrl-row"><label>Days to simulate</label><span class="cv" id="v-days">14</span></div>
+  <input type="range" min="3" max="30" step="1" value="14" id="sl-days" oninput="document.getElementById('v-days').textContent=this.value">
+  <div class="ctrl-row"><label>Patients (n)</label><span class="cv" id="v-n">500</span></div>
+  <input type="range" min="100" max="1000" step="100" value="500" id="sl-n" oninput="document.getElementById('v-n').textContent=this.value">
+</div>
+
+<div class="sb-sec">
+  <button class="runbtn" id="runbtn" onclick="runAll()">&#9654; Run simulation</button>
+</div>
+
+<div class="sb-sec" style="font-size:.6rem;color:#444;line-height:1.65">
+  <strong style="color:#666;display:block;margin-bottom:.2rem">PK sources</strong>
+  Ticagrelor: Li 2016 PLATO/DISPERSE-2; Roshammar 2017 PEGASUS<br>
+  Clopidogrel H4: Lechat 2013; Bergmann 2017<br>
+  Prasugrel AM: Ernest 2008; NCT01591317<br>
+  <strong style="color:#666;display:block;margin-top:.4rem;margin-bottom:.2rem">PD sources</strong>
+  Ticagrelor: Astrand 2019; Amilon 2019<br>
+  Irrev.: Platelet turnover model, calibrated to CAPITAL registry / Alexopoulos 2013
+</div>
+</aside>
+
+<!-- ===== MAIN ===== -->
+<main class="main">
+
+<div class="ptitle">
+  Population PK/PD simulation
+  <span class="dbadge b-tic" id="drug-badge">Ticagrelor 90 mg BID</span>
+  <span id="pat-badge" style="font-size:.62rem;color:var(--dim)">Perfect adherence</span>
+</div>
+
+<!-- PDC prediction section -->
+<div class="panel" style="margin-bottom:.75rem">
+  <div class="ph">1-year PDC prediction — P2Y12 inhibitors only — Tannous et al. 2025 (Table S7)<span class="src">Beta-regression · logit link · Bayesian R² = 70.9%</span></div>
+  <div class="pdc-grid">
+    <div class="pdc-ctrl">
+      <div class="ctrl-row"><label style="color:var(--dim)">Days covered at 90 days post-MI (0 – 90)</label><span class="cv" id="v-dc90" style="font-size:.9rem;color:var(--acc)">70</span></div>
+      <input type="range" min="0" max="90" step="1" value="70" id="sl-dc90" oninput="onDC90(this.value)" style="margin-bottom:0">
+      <div class="pdc-note" style="margin-top:.5rem">
+        <strong>Model (Table S7):</strong> μ = inv_logit(log(0.11) + log(1.05) × dc90)<br>
+        Intercept OR = 0.11 · Predictor OR = 1.05/day · φ = 6.72 · n = 3,661<br>
+        <span style="color:var(--dim)">Marginal R² = 70.8% · Conditional R² = 71.0%</span>
+      </div>
+    </div>
+    <div>
+      <div class="pdc-out" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="pdc-item">
+          <div class="pdc-lbl">Predicted mean PDC</div>
+          <div class="pdc-val" id="pdc-p2y12" style="font-size:1.5rem">0.77</div>
+          <div class="pdc-sub" id="pdc-ci">95% CI: —</div>
+        </div>
+        <div class="pdc-item">
+          <div class="pdc-lbl">logit(μ)</div>
+          <div class="pdc-val" id="pdc-logit" style="font-size:1.1rem">1.22</div>
+          <div class="pdc-sub">logit scale</div>
+        </div>
+        <div class="pdc-item">
+          <div class="pdc-lbl">Beta dist. φ (precision)</div>
+          <div class="pdc-val" style="font-size:1.1rem">6.72</div>
+          <div class="pdc-sub">from Table S7</div>
+        </div>
+      </div>
+      <div id="pdc-bar-wrap" style="margin-top:.55rem"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Metrics strip -->
+<div class="mrow">
+  <div class="mi"><div class="ml">Predicted 1-yr PDC<br>(Tannous model)</div><div class="mv acc" id="m-predpdc">—</div></div>
+  <div class="mi"><div class="ml">Geom. mean Cmax<br>active drug/metabolite</div><div class="mv acc" id="m-cmax">—</div></div>
+  <div class="mi"><div class="ml">Geometric mean trough<br>PRU (steady state)</div><div class="mv" id="m-trough">—</div></div>
+  <div class="mi"><div class="ml">Time above HPR<br>PRU &gt; 208</div><div class="mv red" id="m-hpr">—</div></div>
+  <div class="mi"><div class="ml">Time in window<br>PRU 85–208</div><div class="mv grn" id="m-win">—</div></div>
+  <div class="mi"><div class="ml">Time below LPR<br>PRU &lt; 85</div><div class="mv blu" id="m-lpr">—</div></div>
+</div>
+
+<!-- Row 1: PK + params -->
+<div class="pgrid g2">
+  <div class="panel">
+    <div class="ph">Plasma conc. — active drug/metabolite<span class="src" id="pk-unit">ng/mL</span></div>
+    <div class="ch ch-md"><canvas id="ckChart"></canvas></div>
+    <div class="leg">
+      <span class="li"><span class="ll" id="c-gm" style="background:var(--tic)"></span>Geom. mean</span>
+      <span class="li"><span class="lb" id="c-pi" style="background:var(--tic)"></span>5th–95th pctile</span>
+      <span class="li"><span class="ld" style="border-color:#999"></span>EC50 / PD threshold</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph">PK model parameters</div>
+    <div id="pk-params"></div>
+  </div>
+</div>
+
+<!-- Row 2: PRU + PK/PD scatter -->
+<div class="pgrid g2">
+  <div class="panel">
+    <div class="ph">PRU over time — population<span class="src">VerifyNow P2Y12 assay</span></div>
+    <div class="ch ch-md"><canvas id="pruChart"></canvas></div>
+    <div class="zbar" id="zbar"></div>
+    <div class="leg">
+      <span class="li"><span class="ll" id="p-gm" style="background:var(--tic)"></span>Geom. mean</span>
+      <span class="li"><span class="lb" id="p-pi" style="background:var(--tic)"></span>5th–95th pctile</span>
+      <span class="li"><span class="ld" style="border-color:var(--hpr)"></span>HPR 208</span>
+      <span class="li"><span class="ld" style="border-color:var(--lpr)"></span>LPR 85</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph">PK/PD relationship — conc. vs PRU<span class="src">scatter: sampled from steady state</span></div>
+    <div class="ch ch-md"><canvas id="pkpdChart"></canvas></div>
+    <div id="pd-eq"></div>
+  </div>
+</div>
+
+<!-- Row 3: Dose schedule + interpretation -->
+<div class="pgrid g2">
+  <div class="panel">
+    <div class="ph">Dosing schedule — representative patient</div>
+    <div class="ch ch-sm"><canvas id="doseChart"></canvas></div>
+    <div style="font-size:.62rem;color:var(--dim);margin-top:.3rem" id="dose-note"></div>
+  </div>
+  <div class="panel">
+    <div class="ph">Pharmacodynamic interpretation</div>
+    <div id="insight"></div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// PK PARAMETERS  (published population estimates + IIV)
+// ═══════════════════════════════════════════════════════
+const P = {
+  tic:{
+    label:'Ticagrelor 90 mg BID', color:'#1a5fa0', colorLt:'#d0e5f7',
+    dpd:2, interval_h:12, dose_mg:90,
+    // Parent 1-cmt: Li 2016 Int J Clin Pharmacol Ther (PLATO/DISPERSE-2 n=6990)
+    ka:0.67, CLF:14, VdF:221,
+    // Metabolite 1-cmt: Roshammar 2017 (PEGASUS n=4426)
+    FMET:0.50, CLam:9.95, Vdam:140,
+    // IIV log-normal CV fractions
+    iiv_ka:0.40, iiv_CLF:0.40, iiv_VdF:0.30, iiv_CLam:0.40, iiv_Vdam:0.35,
+    reversible:true,
+    // PD: Astrand 2019; Amilon 2019 (EC50=233 nmol/L; MW_tica=522 g/mol)
+    EC50:126,  // ng/mL  (233 nmol/L × 0.522/0.968 ≈ 126)
+    Emax:1.0, gamma:1.3, PRU0:283,
+    pkUnit:'ng/mL  (combined parent + metabolite effective conc.)',
+    pkSrc:'Li et al. 2016 (PLATO/DISPERSE-2); Roshammar et al. 2017 (PEGASUS)',
+    pdSrc:'Astrand et al. 2019 Br J Clin Pharmacol; Amilon et al. 2019 Clin Pharmacokinet',
+    rows:[
+      ['ka (parent)','0.67 /h','Li 2016'],
+      ['CL/F (parent)','14 L/h','Li 2016'],
+      ['Vd/F (parent)','221 L','Li 2016'],
+      ['CL_AM/F','9.95 L/h','Roshammar 2017'],
+      ['FMET','0.50 (est.)','—'],
+      ['IIV CL','~40% CV','typical popPK'],
+      ['EC50 combined','233 nmol/L = 126 ng/mL','Amilon 2019'],
+      ['Emax','1.0 (fixed)','Astrand 2019'],
+      ['Hill γ','1.3','Astrand 2019'],
+      ['Baseline PRU','283','Amilon 2019'],
+    ],
+  },
+  clop:{
+    label:'Clopidogrel 75 mg QD — H4 metabolite', color:'#2d6b1a', colorLt:'#d2eccc',
+    dpd:1, interval_h:24, dose_mg:75,
+    // H4 thiol metabolite — t½ ~30 min; Cmax ~7 ng/mL (Lechat 2013)
+    ka:6.0, CLF:220, VdF:110, FMET:0.12,
+    iiv_ka:0.30, iiv_CLF:0.55, iiv_VdF:0.40,
+    reversible:false,
+    PRU0:280, platelet_lifespan:10,
+    ss_inh:0.43,   // 43% pool inhibited at SS → PRU ≈ 160 (EM)
+    iiv_inh:0.55,  // large IIV matching ~85% CV on Cmax
+    pkUnit:'ng/mL  (H4 active thiol metabolite)',
+    pkSrc:'Lechat et al. 2013 EurJCP (Cmax ~7 ng/mL; AUC ~11 ng·h/mL); Bergmann 2017',
+    pdSrc:'Platelet turnover model; calibrated to CAPITAL registry (PRU ~160, EM)',
+    rows:[
+      ['Cmax H4 (75 mg)','~7 ng/mL (mean)','Lechat 2013'],
+      ['AUC H4 (75 mg)','~11 ng·h/mL','Lechat 2013'],
+      ['t½ H4','~0.5 h','FDA label'],
+      ['IIV Cmax','~85% CV','Lechat 2013'],
+      ['CYP2C19*2 effect','AUC halved','Bergmann 2017'],
+      ['Platelet lifespan','~10 days','standard'],
+      ['SS PRU (EM)','~160','CAPITAL registry'],
+    ],
+  },
+  pras:{
+    label:'Prasugrel 10 mg QD — R-138727 metabolite', color:'#8b2010', colorLt:'#f5dbd7',
+    dpd:1, interval_h:24, dose_mg:10,
+    // R-138727; Tmax ~0.5h; t½ ~4h; Ernest 2008; NCT01591317 (Cmax ~92 ng/mL)
+    ka:3.0, CLF:145, VdF:580, FMET:1.0,
+    iiv_ka:0.30, iiv_CLF:0.40, iiv_VdF:0.35,
+    reversible:false,
+    PRU0:280, platelet_lifespan:10,
+    ss_inh:0.64,   // ~64% → PRU ≈ 100 (Alexopoulos 2013)
+    iiv_inh:0.30,
+    pkUnit:'ng/mL  (R-138727 active metabolite)',
+    pkSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn; NCT01591317 Korean study',
+    pdSrc:'Ernest 2008 irrev. Emax + platelet turnover; calibrated to PRU ~100 (Alexopoulos 2013)',
+    rows:[
+      ['Cmax R-138727','~92 ng/mL (geom)','NCT01591317'],
+      ['AUC R-138727','~78 ng·h/mL','NCT01591317'],
+      ['Tmax','~0.5 h','Farid 2009'],
+      ['t½','~4–7 h','Ernest 2008'],
+      ['IIV Cmax','~36% CV','NCT01591317'],
+      ['Platelet lifespan','~10 days','standard'],
+      ['SS PRU','~100','Alexopoulos 2013'],
+    ],
+  },
+};
+
+const PATS = {
+  perfect: 'Perfect adherence (PDC = 1.0)',
+  random:  'Random sparse — PDC-scaled',
+  cluster: 'Drug holiday — PDC-scaled gap length, centred at simulation midpoint',
+  decay:   'Gradual decay — PDC-scaled decline rate',
+  periodic:'Periodic gaps — PDC-scaled days missed per week',
+  delayed: 'Delayed dose — BID timing collapsed (PDC = 1.0)',
+};
+
+let cDrug='tic', cPat='perfect';
+const charts={};
+
+// ─── Utilities ────────────────────────────────────────────
+function randn(){
+  let u,v,s;
+  do{u=Math.random()*2-1;v=Math.random()*2-1;s=u*u+v*v;}while(s>=1||s===0);
+  return u*Math.sqrt(-2*Math.log(s)/s);
+}
+function sampleLN(mu, cvFrac){
+  if(cvFrac===0) return mu;
+  const sig=Math.sqrt(Math.log(1+cvFrac*cvFrac));
+  return mu*Math.exp(sig*randn());
+}
+function geoMean(a){ return Math.exp(a.reduce((s,v)=>s+Math.log(Math.max(1e-9,v)),0)/a.length); }
+function pctile(a,p){ const s=[...a].sort((x,y)=>x-y); const i=(p/100)*(s.length-1); const lo=Math.floor(i),hi=Math.ceil(i); return s[lo]+(s[hi]-s[lo])*(i-lo); }
+function hexA(h,a){ const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16); return `rgba(${r},${g},${b},${a})`; }
+function destroyC(id){ if(charts[id]){charts[id].destroy();charts[id]=null;} }
+
+// ─── PDC prediction — P2Y12 only (Tannous et al. 2025, Table S7) ──────────────
+// Beta-regression with logit link:
+//   logit(mu) = log(0.11) + log(1.05) * dc90
+//             = -2.2073 + 0.04879 * dc90
+// where dc90 = number of days covered at 90 days (integer, 0–90)
+// Source: Table S7, supplementary material, Tannous et al. Eur J Prev Cardiol 2025
+// Intercept OR = 0.11 (→ logit intercept = log(0.11) = -2.2073)
+// Predictor OR = 1.05 per day covered (→ log-OR = log(1.05) = 0.04879)
+// Precision phi = 6.72
+// Marginal R² = 0.708; Conditional R² = 0.710; n = 3,661
+
+const LOGIT_INT = Math.log(0.11);   // -2.2073
+const LOG_OR    = Math.log(1.05);   // 0.04879 per day
+const PHI       = 6.72;
+
+function inv_logit(x){ return 1/(1+Math.exp(-x)); }
+
+function predictPDC_p2y12(dc90){
+  // Returns {mu, logit_mu, alpha, beta_param, ci_lo, ci_hi}
+  dc90 = Math.min(90, Math.max(0, dc90));
+  const logit_mu = LOGIT_INT + LOG_OR * dc90;
+  const mu       = inv_logit(logit_mu);
+  const alpha    = mu * PHI;
+  const beta_p   = (1 - mu) * PHI;
+  // 95% CI from beta distribution variance: var = mu*(1-mu)/(phi+1)
+  const sd = Math.sqrt(mu*(1-mu)/(PHI+1));
+  const ci_lo = Math.max(0, mu - 1.96*sd);
+  const ci_hi = Math.min(1, mu + 1.96*sd);
+  return {mu, logit_mu, alpha, beta_p, ci_lo, ci_hi};
+}
+
+function onDC90(v){
+  v = parseInt(v);
+  document.getElementById('v-dc90').textContent = v;
+  const r = predictPDC_p2y12(v);
+  document.getElementById('pdc-p2y12').textContent = r.mu.toFixed(3);
+  document.getElementById('pdc-logit').textContent  = r.logit_mu.toFixed(3);
+  document.getElementById('pdc-ci').textContent     = `95% CI: ${r.ci_lo.toFixed(2)}–${r.ci_hi.toFixed(2)}`;
+  document.getElementById('pdc-bar-wrap').innerHTML =
+    `<div style="font-size:.62rem;color:var(--dim);margin-bottom:.25rem">
+       Predicted mean 1-year P2Y12 PDC = <strong style="color:var(--ink)">${r.mu.toFixed(3)}</strong>
+       &nbsp;·&nbsp; Beta(α=${r.alpha.toFixed(2)}, β=${r.beta_p.toFixed(2)})
+     </div>
+     <div style="position:relative;height:14px;border-radius:3px;background:var(--paper3);overflow:hidden">
+       <div style="position:absolute;left:${r.ci_lo*100}%;width:${(r.ci_hi-r.ci_lo)*100}%;height:100%;background:var(--tic-lt)"></div>
+       <div style="position:absolute;left:0;width:${r.mu*100}%;height:100%;background:var(--tic);border-radius:3px;transition:width .3s"></div>
+     </div>
+     <div style="display:flex;justify-content:space-between;font-size:.57rem;color:var(--dim);margin-top:.15rem">
+       <span>0</span><span>← 95% CI shaded</span><span>PDC 1.0</span>
+     </div>`;
+}
+
+// ─── Schedule generators ───────────────────────────────────
+function makeSchedule(pat, dpd, days, pdc){
+  // pdc: predicted 1-year PDC from Tannous beta-regression (0–1)
+  // Each pattern uses pdc to scale its intensity — same PDC, different patterns
+  const n = dpd * days;
+  const s = new Array(n).fill(true);
+
+  if(pat === 'perfect') return s;
+
+  if(pat === 'delayed') {
+    // Delayed dose: all doses TAKEN but at wrong times (handled in ODE)
+    // If PDC < 1.0, add sparse random non-adherence on top
+    if(pdc < 0.999) {
+      for(let i=0;i<n;i++) s[i] = Math.random() < pdc;
+    }
+    return s;
+  }
+
+  if(pat === 'random'){
+    // Each dose independently missed with prob (1-PDC)
+    // Small patient-level IIV around the population PDC
+    const ptPDC = Math.min(1, Math.max(0, pdc + (Math.random()-0.5)*0.04));
+    for(let i=0;i<n;i++) s[i] = Math.random() < ptPDC;
+
+  } else if(pat === 'cluster'){
+    // Holiday length = round((1-PDC) * days), centred at simulation midpoint
+    // Fixed timing so geoMean shows a clean dip; PK IIV provides the band width
+    const holDays = Math.max(0, Math.round((1 - pdc) * days));
+    if(holDays === 0) return s; // perfect adherence
+    const midDay   = Math.floor(days / 2);
+    const startDay = Math.max(0, midDay - Math.floor(holDays / 2));
+    const endDay   = Math.min(days - 1, startDay + holDays - 1);
+    for(let i=0;i<n;i++){
+      const dayIdx = Math.floor(i / dpd);
+      if(dayIdx >= startDay && dayIdx <= endDay) s[i] = false;
+    }
+
+  } else if(pat === 'decay'){
+    // P(dose taken at position i) = max(0, 1 - slope * i/n)
+    // slope chosen so that mean P across all doses = PDC:
+    //   mean = 1 - slope/2  →  slope = 2*(1-PDC)
+    // Patient-level IIV: slope varies ±10% across patients
+    const slopeBase = 2 * (1 - pdc);
+    const slope = Math.max(0, slopeBase * (1 + (Math.random()-0.5)*0.2));
+    for(let i=0;i<n;i++){
+      const p = Math.max(0, 1 - slope * (i / n));
+      s[i] = Math.random() < p;
+    }
+
+  } else if(pat === 'periodic'){
+    // miss = round((1-PDC) * 7) days per 7-day cycle
+    // e.g. PDC=0.857 → miss 1 day; PDC=0.714 → miss 2 days (weekends); etc.
+    const missPerWeek = Math.min(7, Math.max(0, Math.round((1 - pdc) * 7)));
+    // Missed days are the last `missPerWeek` days of each week (Sat, then Fri, etc.)
+    // Day-of-week 0=Mon … 6=Sun; miss from Sunday backward
+    for(let i=0;i<n;i++){
+      const dow = Math.floor(i / dpd) % 7; // 0–6
+      s[i] = (dow < 7 - missPerWeek);
+    }
+  }
+  return s;
+}
+
+// ─── PK simulation (ODE, Euler dt=0.25h) ──────────────────
+function simPatient(drug, sched, pat, days){
+  const p=P[drug];
+  const dt=0.25;
+  const nT=Math.round(days*24/dt);
+  const ka =sampleLN(p.ka,  p.iiv_ka);
+  const CLF=sampleLN(p.CLF, p.iiv_CLF);
+  const VdF=sampleLN(p.VdF, p.iiv_VdF);
+  const kEl=CLF/VdF;   // /h  (CL and Vd both in L/h and L → /h)
+
+  // ODE state in mg (dose in mg, Vd in L → conc in mg/L; ×1000 → ng/mL)
+  let Ag=0, Ac=0, Am=0;
+  let CLam=0, Vdam=0;
+  if(p.reversible){
+    CLam=sampleLN(p.CLam, p.iiv_CLam);
+    Vdam=sampleLN(p.Vdam, p.iiv_Vdam);
+  }
+
+  // Irreversible: patient-specific platelet inhibition at steady state
+  let inh=sampleLN(p.ss_inh||0.5, p.iiv_inh||0.3);
+  inh=Math.min(0.92,Math.max(0.05,inh));
+  let plat_inh=inh;
+
+  const out=[];
+  let lastH=-1;
+
+  for(let step=0;step<nT;step++){
+    const t=step*dt;
+    const day=Math.floor(t/24);
+    const hr=t%24;
+
+    // Dosing events
+    if(p.dpd===2){
+      const dh=pat==='delayed'?[8,10]:[8,20];
+      for(let k=0;k<2;k++){
+        if(Math.abs(hr-dh[k])<dt*0.6){
+          const di=day*2+k;
+          if(di<sched.length && sched[di]) Ag+=p.dose_mg;
+        }
+      }
+    } else {
+      if(Math.abs(hr-8)<dt*0.6){
+        if(day<sched.length && sched[day]) Ag+=p.dose_mg;
+      }
+    }
+
+    // ODE: all absorbed drug enters parent central compartment
+    const dAg=-ka*Ag;
+    const dAc=ka*Ag - kEl*Ac;   // ka*Ag absorbed; kEl*Ac eliminated
+    Ag=Math.max(0, Ag+dAg*dt);
+    Ac=Math.max(0, Ac+dAc*dt);
+
+    // Concentration in ng/mL (Ac in mg, VdF in L → mg/L × 1000 = ng/mL)
+    let Ceff_ngmL = (Ac/VdF)*1000;
+
+    if(p.reversible){
+      // Metabolite compartment: formed from parent elimination via FMET fraction
+      const kEm=CLam/Vdam;
+      const form_rate = (CLF*p.FMET/VdF)*Ac; // mg/h of metabolite formed
+      Am=Math.max(0, Am+(form_rate-kEm*Am)*dt);
+      const Cam_ngmL=(Am/Vdam)*1000;
+      // Combined effective concentration (parent + metabolite, equal weight)
+      Ceff_ngmL=(Ceff_ngmL+Cam_ngmL)*0.5;
+    }
+
+    // Irreversible: update platelet pool once per day
+    if(!p.reversible && Math.abs(hr-8.1)<dt){
+      const nf=1/p.platelet_lifespan;
+      const taken=day<sched.length?sched[day]:false;
+      plat_inh=taken
+        ? plat_inh*(1-nf)+nf*inh   // new platelets inhibited by today's dose
+        : plat_inh*(1-nf)+nf*0;    // new platelets uninhibited (no dose)
+      plat_inh=Math.max(0,Math.min(0.99,plat_inh));
+    }
+
+    // Sample hourly
+    const hFloor=Math.floor(t);
+    if(hFloor!==lastH && t>=hFloor){
+      lastH=hFloor;
+      let pru;
+      if(p.reversible){
+        // Sigmoidal Imax: PRU = PRU0 × (1 − Emax×C^γ/(EC50^γ + C^γ))
+        const C=Math.max(0,Ceff_ngmL);
+        const ratio=Math.pow(C/p.EC50, p.gamma);
+        pru=Math.max(0,Math.round(p.PRU0*(1-p.Emax*ratio/(1+ratio))));
+      } else {
+        pru=Math.max(0,Math.round(p.PRU0*(1-plat_inh)));
+      }
+      out.push({t:hFloor, C:Math.max(0,Ceff_ngmL), pru:pru, inh:plat_inh});
+    }
+  }
+  return out;
+}
+
+// ─── Main run ──────────────────────────────────────────────
+function runAll(){
+  const p=P[cDrug], pat=cPat;
+  const days=parseInt(document.getElementById('sl-days').value);
+  const nPts=parseInt(document.getElementById('sl-n').value);
+  if(pat==='delayed'&&cDrug!=='tic'){
+    alert('Delayed dose pattern applies only to ticagrelor (BID). Please select a different pattern.');
+    return;
+  }
+  const btn=document.getElementById('runbtn');
+  btn.disabled=true; btn.textContent='Running…';
+  setTimeout(()=>{
+    try{ _run(p,pat,days,nPts); }
+    finally{ btn.disabled=false; btn.textContent='▶ Run simulation'; }
+  },15);
+}
+
+function _run(p,pat,days,nPts){
+  const nH=days*24;
+  const hours=Array.from({length:nH},(_,i)=>i);
+  const popC  =hours.map(()=>[]);
+  const popPRU=hours.map(()=>[]);
+  const cmaxA=[];
+  // Tannous beta-regression predicted PDC drives all pattern intensities
+  const dc90val = parseInt(document.getElementById('sl-dc90').value);
+  const simPDC  = predictPDC_p2y12(dc90val).mu;
+  const repSched=makeSchedule(pat,p.dpd,days,simPDC);
+
+  for(let pt=0;pt<nPts;pt++){
+    const sched=makeSchedule(pat,p.dpd,days,simPDC);
+    const traj=simPatient(cDrug,sched,pat,days);
+    let cm=0;
+    for(let hi=0;hi<nH;hi++){
+      const r=traj[hi]||{C:0,pru:p.PRU0,inh:0};
+      popC[hi].push(r.C);
+      popPRU[hi].push(r.pru);
+      if(r.C>cm) cm=r.C;
+    }
+    cmaxA.push(cm);
+  }
+
+  const gmC  =hours.map((_,i)=>geoMean(popC[i]));
+  const p5C  =hours.map((_,i)=>pctile(popC[i],5));
+  const p95C =hours.map((_,i)=>pctile(popC[i],95));
+  const gmPRU=hours.map((_,i)=>geoMean(popPRU[i]));
+  const p5PRU=hours.map((_,i)=>pctile(popPRU[i],5));
+  const p95PRU=hours.map((_,i)=>pctile(popPRU[i],95));
+
+  const allPRU=popPRU.flat();
+  const hprPct=Math.round(100*allPRU.filter(x=>x>208).length/allPRU.length);
+  const lprPct=Math.round(100*allPRU.filter(x=>x<85).length/allPRU.length);
+  const winPct=Math.round(100*allPRU.filter(x=>x>=85&&x<=208).length/allPRU.length);
+
+  // Geometric mean trough (last-hour-before-dose of each day)
+  const troughIdxs=[];
+  for(let d=0;d<days;d++) troughIdxs.push(d*24+7); // 07:00 = pre-dose
+  const troughVals=troughIdxs.map(i=>geoMean(popPRU[i]||[p.PRU0]));
+  const gmTrough=Math.round(geoMean(troughVals));
+
+  document.getElementById('m-predpdc').textContent=simPDC.toFixed(3);
+  document.getElementById('m-cmax').textContent=geoMean(cmaxA).toFixed(1)+' ng/mL';
+  document.getElementById('m-trough').textContent=gmTrough+' PRU';
+  document.getElementById('m-hpr').textContent=hprPct+'%';
+  document.getElementById('m-win').textContent=winPct+'%';
+  document.getElementById('m-lpr').textContent=lprPct+'%';
+
+  document.getElementById('zbar').innerHTML=
+    `<div class="z-h" style="flex:${hprPct||0}"></div>
+     <div class="z-w" style="flex:${winPct||0}"></div>
+     <div class="z-l" style="flex:${lprPct||0}"></div>`;
+
+  // PK/PD scatter: sample from second half of simulation
+  const scStart=Math.floor(nH*0.5);
+  const scatter=[];
+  for(let i=0;i<300;i++){
+    const hi=scStart+Math.floor(Math.random()*(nH-scStart));
+    const pi=Math.floor(Math.random()*nPts);
+    if(popC[hi]&&popPRU[hi]) scatter.push({x:popC[hi][pi],y:popPRU[hi][pi]});
+  }
+
+  // Theoretical PD curve (reversible only)
+  const cMaxScat=p.reversible ? Math.max(...scatter.map(s=>s.x),1) : 0;
+  const pdCurve=[];
+  if(p.reversible && cMaxScat>0){
+    for(let i=0;i<80;i++){
+      const C=(i/79)*cMaxScat;
+      const ratio=Math.pow(C/p.EC50,p.gamma);
+      pdCurve.push({x:C, y:Math.max(0,Math.round(p.PRU0*(1-p.Emax*ratio/(1+ratio))))});
+    }
+  }
+
+  drawCK(p,hours,gmC,p5C,p95C);
+  drawPRU(p,hours,gmPRU,p5PRU,p95PRU);
+  drawPKPD(p,scatter,pdCurve,cMaxScat);
+  drawDose(p,repSched,days,pat);
+  drawInsight(p,pat,hprPct,winPct,lprPct);
+  drawParams(p);
+  updateBadges(p,pat);
+}
+
+// ─── Chart drawing ─────────────────────────────────────────
+function mkCtx(id){ return document.getElementById(id).getContext('2d'); }
+
+function drawCK(p,hours,gm,p5,p95){
+  destroyC('ckChart');
+  const labels=hours.map(h=>h%12===0?h+'h':'');
+  const ec50L=p.reversible?new Array(hours.length).fill(p.EC50):null;
+  const ds=[
+    {data:p5,borderColor:'transparent',pointRadius:0,fill:false},
+    {data:p95,borderColor:'transparent',pointRadius:0,fill:'-1',backgroundColor:hexA(p.color,0.15)},
+    {label:'Geom. mean',data:gm,borderColor:p.color,borderWidth:2,pointRadius:0,tension:0.35,fill:false},
+  ];
+  if(ec50L) ds.push({label:'EC50',data:ec50L,borderColor:'#999',borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false});
+  document.getElementById('c-gm').style.background=p.color;
+  document.getElementById('c-pi').style.background=p.color;
+  document.getElementById('pk-unit').textContent=p.pkUnit;
+  charts['ckChart']=new Chart(mkCtx('ckChart'),{
+    type:'line',data:{labels,datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{maxTicksLimit:8,font:{size:9}},grid:{display:false}},
+              y:{min:0,title:{display:true,text:'ng/mL',font:{size:9}},ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}}}},
+  });
+}
+
+function drawPRU(p,hours,gm,p5,p95){
+  destroyC('pruChart');
+  const labels=hours.map(h=>h%12===0?h+'h':'');
+  document.getElementById('p-gm').style.background=p.color;
+  document.getElementById('p-pi').style.background=p.color;
+  charts['pruChart']=new Chart(mkCtx('pruChart'),{
+    type:'line',
+    data:{labels,datasets:[
+      {data:p5,borderColor:'transparent',pointRadius:0,fill:false},
+      {data:p95,borderColor:'transparent',pointRadius:0,fill:'-1',backgroundColor:hexA(p.color,0.15)},
+      {label:'Geom. mean',data:gm,borderColor:p.color,borderWidth:2,pointRadius:0,tension:0.35,fill:false},
+      {data:new Array(hours.length).fill(208),borderColor:hexA('#c0392b',0.7),borderWidth:1,borderDash:[5,3],pointRadius:0,fill:false},
+      {data:new Array(hours.length).fill(85), borderColor:hexA('#1a5fa0',0.7),borderWidth:1,borderDash:[3,3],pointRadius:0,fill:false},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{maxTicksLimit:8,font:{size:9}},grid:{display:false}},
+              y:{min:0,max:300,title:{display:true,text:'PRU',font:{size:9}},ticks:{font:{size:9}},
+                 grid:{color:ctx=>{const v=ctx.tick.value;return v===208?hexA('#c0392b',0.2):v===85?hexA('#1a5fa0',0.2):'rgba(0,0,0,0.04)';}}}}},
+  });
+}
+
+function drawPKPD(p,scatter,pdCurve,cMax){
+  destroyC('pkpdChart');
+  const xMax=cMax>0?cMax:Math.max(...scatter.map(s=>s.x),1);
+  const ds=[
+    {type:'scatter',data:scatter.map(s=>({x:s.x,y:s.y})),
+     backgroundColor:hexA(p.color,0.1),borderColor:hexA(p.color,0.22),
+     borderWidth:0.5,pointRadius:2.5,order:2},
+  ];
+  if(pdCurve.length){
+    ds.push({type:'line',data:pdCurve,borderColor:p.color,borderWidth:2,pointRadius:0,fill:false,tension:0.4,order:1});
+  }
+  ds.push(
+    {type:'line',data:[{x:0,y:208},{x:xMax,y:208}],borderColor:hexA('#c0392b',0.7),borderWidth:1,borderDash:[4,3],pointRadius:0,fill:false},
+    {type:'line',data:[{x:0,y:85}, {x:xMax,y:85}], borderColor:hexA('#1a5fa0',0.7),borderWidth:1,borderDash:[3,3],pointRadius:0,fill:false}
+  );
+  if(p.reversible){
+    ds.push({type:'line',data:[{x:p.EC50,y:0},{x:p.EC50,y:300}],borderColor:'#aaa',borderWidth:1,borderDash:[2,4],pointRadius:0,fill:false});
+  }
+  charts['pkpdChart']=new Chart(mkCtx('pkpdChart'),{
+    type:'scatter',data:{datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{min:0,title:{display:true,text:'Conc. (ng/mL)',font:{size:9}},ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.04)'}},
+              y:{min:0,max:300,title:{display:true,text:'PRU',font:{size:9}},ticks:{font:{size:9}},grid:{color:'rgba(0,0,0,0.04)'}}}},
+  });
+  const eq=p.reversible
+    ? `<div class="eq">PRU = <em>PRU₀</em> × [1 − <em>Emax</em>·C<sup>γ</sup>/(EC50<sup>γ</sup>+C<sup>γ</sup>)]<br>PRU₀=${p.PRU0} · EC50=${p.EC50} ng/mL · γ=${p.gamma} · Emax=${p.Emax}</div>`
+    : `<div class="eq">PRU = <em>PRU₀</em> × (1 − platelet_inh_frac)<br>Offset via platelet turnover · lifespan=${p.platelet_lifespan} days<br>SS PRU ≈ ${Math.round(p.PRU0*(1-(p.ss_inh||0)))} — scatter is vertical near C≈0 (irreversible: effect persists after drug clears)</div>`;
+  document.getElementById('pd-eq').innerHTML=eq;
+}
+
+function drawDose(p,sched,days,pat){
+  destroyC('doseChart');
+  const taken=[],missed=[];
+  for(let i=0;i<sched.length;i++){
+    const day=Math.floor(i/p.dpd);
+    const offH=p.dpd===2?(pat==='delayed'?[8,10]:[8,20])[i%2]:8;
+    const t=day*24+offH;
+    (sched[i]?taken:missed).push({x:t,y:1});
+  }
+  const nMiss=sched.filter(s=>!s).length;
+  const pdc=((sched.length-nMiss)/sched.length).toFixed(2);
+  charts['doseChart']=new Chart(mkCtx('doseChart'),{
+    type:'scatter',
+    data:{datasets:[
+      {label:'Taken',data:taken,pointStyle:'triangle',pointRadius:6,backgroundColor:p.color,borderColor:p.color},
+      {label:'Missed',data:missed,pointStyle:'crossRot',pointRadius:6,backgroundColor:'#c0392b',borderColor:'#c0392b'},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{font:{size:9},boxWidth:10}}},
+      scales:{x:{min:0,max:days*24,ticks:{callback:v=>v%24===0?'D'+(v/24+1):'',maxTicksLimit:days,font:{size:9}},grid:{display:false}},
+              y:{display:false,min:0,max:2}}},
+  });
+  const dc90v = parseInt(document.getElementById('sl-dc90').value);
+  const predPDC = predictPDC_p2y12(dc90v).mu.toFixed(3);
+  document.getElementById('dose-note').textContent=
+    `Tannous model → PDC = ${predPDC} (dc90 = ${dc90v} days)  ·  Realised PDC = ${pdc}  ·  ${nMiss} of ${sched.length} doses missed  ·  Pattern: ${PATS[pat]}`;
+}
+
+function drawParams(p){
+  const rows=p.rows.map(([k,v,s])=>`<tr><td>${k}</td><td>${v}</td><td style="font-size:.6rem;color:#bbb">${s}</td></tr>`).join('');
+  document.getElementById('pk-params').innerHTML=
+    `<table class="pt"><thead><tr><td><b>Parameter</b></td><td><b>Value</b></td><td><b>Source</b></td></tr></thead><tbody>${rows}</tbody></table>
+     <div style="font-size:.6rem;color:#bbb;margin-top:.35rem">${p.pkSrc}</div>`;
+}
+
+function drawInsight(p,pat,hprPct,winPct,lprPct){
+  const I={
+    tic:{
+      perfect:{cls:'lpr',msg:'At full adherence ticagrelor 90 mg BID keeps most patients in <strong>LPR territory (PRU &lt; 85)</strong>. This is the expected clinical reality — CAPITAL registry: only 4.1% of patients in the therapeutic window; PEGASUS substudy: mean trough PRU = 47 ± 43. Low therapeutic window time at high PDC reflects <em>excess inhibition</em>, not insufficient inhibition. The PK/PD scatter shows the sigmoidal Imax curve: at steady-state concentrations (≫ EC50 = 126 ng/mL), PRU is driven to very low values.'},
+      random:{cls:'warn',msg:'Random missed BID doses allow PRU to rebound transiently from deep LPR toward — and past — HPR. Mechanistically: each 12-hour missed dose allows exponential concentration decay (t½ = 7 h), pushing PRU from ~47 toward ~208 within 12–24 h. The geometric mean PRU shows recurrent transient spikes; the 95th percentile crosses HPR frequently.'},
+      cluster:{cls:'danger',msg:'Drug holidays are the highest-risk pattern for ticagrelor. Reversible binding + 7 h t½ → near-complete PRU recovery within 4–5 days of a gap. The population geometric mean PRU clearly rises into HPR territory during holiday windows. Note the sustained HPR zone in the PRU panel — this represents real unprotected time.'},
+      decay:{cls:'warn',msg:'Progressive adherence decay translates directly into progressive PRU rise for a reversible agent. As taken-dose frequency falls, the effective steady-state concentration drops, driving PRU up the sigmoidal Imax curve. The geometric mean PRU drifts upward across the window, and the PI band widens as adherence IIV compounds with PK IIV.'},
+      periodic:{cls:'warn',msg:'The 48-hour weekend gap reliably pushes trough PRU from LPR (~47) toward the HPR threshold (~208). This is pharmacologically predictable from the 7 h half-life: PRU rebound = 47 + (283−47)×(1−exp(−48×ln2/7)) ≈ 270 PRU. Saturday evening and Sunday are the pharmacologically vulnerable periods.'},
+      delayed:{cls:'danger',msg:'Collapsing BID dosing to a 2-hour morning window (08:00 and 10:00) eliminates afternoon and evening trough coverage. Despite PDC = 1.0, the ~20-hour drug-free window produces PRU excursions equivalent to a missed dose every day. The PK panel shows the characteristic double-peak followed by a long trough; the PRU panel shows daily HPR excursions.'},
+    },
+    clop:{
+      perfect:{cls:'warn',msg:'Clopidogrel (CYP2C19 EM) at full adherence: the platelet pool model predicts SS PRU ≈ 160, with ~40–50% of time in the therapeutic window (CAPITAL registry: 50%; Spiliopoulos: 42%). The PK/PD scatter is a vertical cloud near C ≈ 0 — this is mechanistically correct for irreversible inhibitors: PRU is determined by the platelet pool state, not current drug concentration. Enormous IIV in H4 Cmax (~85% CV) is reflected in the wide PI band.'},
+      random:{cls:'ok',msg:'Irreversible binding buffers random missed doses effectively. A single missed day allows ~10% of platelets to replenish uninhibited (1/platelet lifespan), raising PRU by ~28 PRU. At PDC = 0.75, geometric mean PRU remains within or near the therapeutic window for most of the simulation.'},
+      cluster:{cls:'warn',msg:'A 5-day drug holiday progressively raises PRU by ~28 PRU/day (=280×1/10 uninhibited fraction). After 5 days: PRU ≈ 160 + 140 = 300 PRU in extreme cases; more typically ~160 + 5×18 ≈ 250 PRU (accounting for partial ongoing inhibition). Re-establishment takes 3–5 days of dosing to rebuild the inhibited platelet pool.'},
+      decay:{cls:'warn',msg:'Gradual decay raises the uninhibited platelet fraction slowly but cumulatively. Late-period geometric mean PRU approaches and crosses HPR in severe decay scenarios. Key difference from ticagrelor: the PRU rise is slow (days, not hours), giving a longer window for clinical detection and intervention.'},
+      periodic:{cls:'ok',msg:'Weekend 2-day gaps raise PRU by ~56 PRU (2 × ~28 PRU/day). From SS PRU 160 → ~216 by Sunday evening — crossing HPR threshold for the mean patient. However, re-inhibition is rapid on Monday dose. This pattern is better tolerated by clopidogrel than ticagrelor but still clinically relevant.'},
+      delayed:{cls:'ok',msg:'Pattern not applicable — clopidogrel is QD. Once-daily dosing eliminates inter-dose timing sensitivity. Minor timing variation (08:00 ± 2h) has negligible PD consequence given the very short H4 half-life (~30 min) and irreversible platelet binding mechanism.'},
+    },
+    pras:{
+      perfect:{cls:'ok',msg:'Prasugrel at full adherence: SS PRU ≈ 100, with ~60–75% of time in the therapeutic window. Lower IIV than clopidogrel (CV ~36% vs ~85% on Cmax), no CYP2C19 dependence, faster onset (Tmax ~0.5h). The PK/PD scatter shows a tighter cluster than clopidogrel, confirming more consistent active metabolite exposure across the population. Most patients are comfortably within the 85–208 window at standard dosing.'},
+      random:{cls:'ok',msg:'Most robust drug for random sparse non-adherence. Each missed day raises PRU by ~18 PRU (=280×1/10×0.64 partial replacement). At PDC = 0.75, geometric mean PRU remains largely within the therapeutic window. Recommended agent for patients with Tannous-predicted low PDC and random adherence pattern.'},
+      cluster:{cls:'warn',msg:'A 5-day drug holiday raises PRU by ~90 PRU (5 × ~18 PRU/day) from SS ≈ 100 → ~190, approaching but not crossing HPR for the geometric mean. The 95th percentile may cross HPR. Superior to ticagrelor (PRU rebounds to ~270 in same scenario) but inferior to perfect adherence.'},
+      decay:{cls:'ok',msg:'Gradual decay is well-tolerated by prasugrel. High starting inhibition (SS PRU ~100) and irreversible binding mean that even as adherence wanes, the platelet pool remains partially inhibited by accumulated prior doses. Late-period geometric mean PRU approaches the HPR boundary only in very severe decay patterns.'},
+      periodic:{cls:'ok',msg:'Weekend gaps raise PRU by ~56 PRU from SS (≈100 → 156). This remains firmly within the therapeutic window for the geometric mean patient. The pharmacodynamically safest drug-pattern combination in the simulator. Platelet turnover kinetics make 2-day gaps well-tolerated by all irreversible QD agents.'},
+      delayed:{cls:'ok',msg:'Pattern not applicable — prasugrel is QD. Rapid Tmax (~0.5h) and irreversible binding make minor timing variation inconsequential. Switching patients with suspected ticagrelor delayed-dose behaviour to prasugrel entirely eliminates this source of pharmacodynamic variability.'},
+    },
+  };
+  const ins=I[cDrug]?.[pat]||{cls:'ok',msg:'Run simulation.'};
+  document.getElementById('insight').innerHTML=
+    `<div class="ins ${ins.cls}">${ins.msg}</div>
+     <div style="font-size:.62rem;color:var(--dim);margin-top:.5rem;font-family:var(--mono)">HPR ${hprPct}%  &bull;  Window ${winPct}%  &bull;  LPR ${lprPct}%</div>`;
+}
+
+function updateBadges(p,pat){
+  const b=document.getElementById('drug-badge');
+  b.textContent=p.label;
+  b.className='dbadge b-'+cDrug;
+  document.getElementById('pat-badge').textContent=PATS[pat];
+}
+
+// ─── Selection ─────────────────────────────────────────────
+function selDrug(d){
+  cDrug=d;
+  ['tic','clop','pras'].forEach(x=>document.getElementById('btn-'+x).className='dbtn'+(x===d?' a-'+x:''));
+  const db=document.getElementById('p-delayed');
+  db.style.opacity=d==='tic'?'1':'0.45';
+  db.title=d!=='tic'?'BID only — select ticagrelor first':'';
+  if(d!=='tic'&&cPat==='delayed') selPat('perfect',document.getElementById('p-perfect'));
+}
+function selPat(pat,el){
+  if(pat==='delayed'&&cDrug!=='tic') return;
+  cPat=pat;
+  document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+// ─── Init ──────────────────────────────────────────────────
+onDC90(70);
+runAll();
+</script>
+</body>
+</html>
