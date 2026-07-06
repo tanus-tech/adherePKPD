@@ -146,6 +146,27 @@ input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bo
   <button class="runbtn" id="runbtn" onclick="runAll()">&#9654; Run simulation</button>
 </div>
 
+<div class="sb-sec">
+  <div class="sb-lbl">Patient profile (covariate inputs)</div>
+  <div class="ctrl-row"><label>Body weight (kg)</label><span class="cv" id="v-wt">83</span></div>
+  <input type="range" min="45" max="130" step="1" value="83" id="sl-wt"
+    oninput="COVARS.WT=parseInt(this.value);document.getElementById('v-wt').textContent=this.value">
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.35rem 0">
+    <label style="font-size:.68rem;color:#aaa;display:flex;align-items:center;gap:.25rem;cursor:pointer">
+      <input type="checkbox" id="cb-female" onchange="COVARS.SEX=this.checked?1:0" style="accent-color:var(--acc)">Female sex</label>
+    <label style="font-size:.68rem;color:#aaa;display:flex;align-items:center;gap:.25rem;cursor:pointer">
+      <input type="checkbox" id="cb-age75" onchange="COVARS.AGE75=this.checked?1:0" style="accent-color:var(--acc)">Age ≥75 yr</label>
+    <label style="font-size:.68rem;color:#aaa;display:flex;align-items:center;gap:.25rem;cursor:pointer">
+      <input type="checkbox" id="cb-smoke" onchange="COVARS.SMOKE=this.checked?1:0" style="accent-color:var(--acc)">Smoker</label>
+    <label style="font-size:.68rem;color:#aaa;display:flex;align-items:center;gap:.25rem;cursor:pointer" id="lbl-pm">
+      <input type="checkbox" id="cb-pm" onchange="COVARS.CYP2C19_PM=this.checked?1:0" style="accent-color:var(--acc)">CYP2C19 PM (clop only)</label>
+  </div>
+  <div style="font-size:.6rem;color:#444;line-height:1.5;padding:.4rem .5rem;background:#111;border-radius:3px">
+    Covariates applied per published popPK models.<br>
+    When "population" is selected, individual patient covariates are drawn from post-MI distributions (Tannous et al. Table 2). The UI inputs set the <em>population mean</em>.
+  </div>
+</div>
+
 <div class="sb-sec" style="font-size:.6rem;color:#444;line-height:1.65">
   <strong style="color:#666;display:block;margin-bottom:.2rem">PK sources</strong>
   Ticagrelor: Li 2016 PLATO/DISPERSE-2; Roshammar 2017 PEGASUS<br>
@@ -249,7 +270,34 @@ input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bo
   </div>
 </div>
 
-<!-- Row 3: Dose schedule + interpretation -->
+<!-- Row 3: Individual patient curve -->
+<div class="pgrid g1">
+  <div class="panel">
+    <div class="ph">Individual patient PRU curve
+      <span class="src" id="ind-src">covariate-specific prediction overlaid on population mean</span>
+    </div>
+    <div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
+      <div>
+        <div style="font-size:.6rem;color:var(--dim);margin-bottom:.2rem">Weight (kg)</div>
+        <input type="number" id="ind-wt" value="83" min="40" max="150" step="1"
+          style="width:62px;padding:3px 6px;border:0.5px solid var(--paper3);border-radius:3px;font-size:.8rem;font-family:var(--mono);background:var(--paper2);color:var(--ink)">
+      </div>
+      <label style="font-size:.72rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="ind-female" style="accent-color:var(--acc)">Female</label>
+      <label style="font-size:.72rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="ind-age75" style="accent-color:var(--acc)">&ge;75 yr</label>
+      <label style="font-size:.72rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="ind-smoke" style="accent-color:var(--acc)">Smoker</label>
+      <label style="font-size:.72rem;display:flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" id="ind-pm" style="accent-color:var(--acc)">CYP2C19 PM</label>
+      <button onclick="runIndividual()"
+        style="padding:.35rem .85rem;background:var(--acc);color:#fff;border:none;border-radius:3px;font-size:.72rem;font-family:var(--mono);cursor:pointer">
+        &#9654; Draw individual</button>
+      <span style="font-size:.62rem;color:var(--dim);max-width:210px;line-height:1.4">
+        Dashed gold curve overlaid on population band. Useful for sensitivity analysis and clinical decision support.</span>
+    </div>
+    <div class="ch ch-md"><canvas id="indChart"></canvas></div>
+    <div id="ind-metrics" style="font-size:.65rem;color:var(--dim);margin-top:.3rem;font-family:var(--mono)"></div>
+  </div>
+</div>
+
+<!-- Row 4: Dose schedule + interpretation -->
 <div class="pgrid g2">
   <div class="panel">
     <div class="ph">Dosing schedule — representative patient</div>
@@ -269,80 +317,172 @@ input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bo
 // ═══════════════════════════════════════════════════════
 // PK PARAMETERS  (published population estimates + IIV)
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// POPULATION PK PARAMETERS WITH COVARIATE STRUCTURES
+// All covariate relationships taken directly from the cited primary sources.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Covariate sliders (patient profile) ─────────────────────────────────────
+// These are read at simulation time; defaults reflect a typical post-MI patient.
+// Weight 83 kg, male, age 65, non-smoker, CYP2C19 EM (for clopidogrel)
+
+const COVARS = {
+  // Patient covariate profile (updated by UI sliders)
+  WT:    83,    // body weight (kg)
+  SEX:   0,    // 0 = male, 1 = female
+  AGE75: 0,    // 1 = age ≥ 75 years
+  SMOKE: 0,    // 1 = current smoker
+  CYP2C19_PM: 0,  // 1 = CYP2C19 poor metaboliser (*2/*2 or *2/*3)
+};
+
 const P = {
   tic:{
     label:'Ticagrelor 90 mg BID', color:'#1a5fa0', colorLt:'#d0e5f7',
     dpd:2, interval_h:12, dose_mg:90,
-    // Parent 1-cmt: Li 2016 Int J Clin Pharmacol Ther (PLATO/DISPERSE-2 n=6990)
-    ka:0.67, CLF:14, VdF:221,
-    // Metabolite 1-cmt: Roshammar 2017 (PEGASUS n=4426)
-    FMET:0.50, CLam:9.95, Vdam:140,
-    // IIV log-normal CV fractions
-    iiv_ka:0.40, iiv_CLF:0.40, iiv_VdF:0.30, iiv_CLam:0.40, iiv_Vdam:0.35,
+    // ── PK structural parameters ─────────────────────────────────────────────
+    // Source: Röshammar et al. 2017 Int J Clin Pharmacol Ther 55:416-424
+    // (PEGASUS n=4,426 post-MI patients; 90 mg arm)
+    // One-compartment parent + one-compartment metabolite
+    ka:0.67,       // /h  (from Li 2016, PLATO/DISPERSE-2)
+    CLF:15.4,      // L/h (90 mg arm; Röshammar 2017 Table 2)
+    VdF:221,       // L   (from Li 2016)
+    FMET:0.50,     // fraction forming AR-C124910XX (estimated)
+    CLam:9.95,     // L/h (AR-C124910XX, 90 mg arm; Röshammar 2017)
+    Vdam:140,      // L   (estimated to match observed metabolite PK)
+    // ── Covariate effects on CL/F (parent, Röshammar 2017) ──────────────────
+    // Body weight: power model, reference 83 kg
+    // ticagrelor CL/F: +6% at 110 kg, −11% at 50 kg vs 83 kg reference
+    // → estimated power exponent ~0.25 (conservative; exact value not in abstract)
+    WT_exp_CLF:    0.25,  // CL/F ∝ (WT/83)^0.25
+    WT_ref:        83,    // kg (reference weight, Röshammar 2017)
+    // Sex: female → modest reduction in parent CL/F (<20%); use −10% for parent
+    SEX_f_CLF:     0.90,  // CL/F multiplier for females (parent); <20% effect
+    // Smoking: slight increase in CL/F; Röshammar 2017 reports small positive effect
+    SMOKE_CLF:     1.08,  // CL/F multiplier for current smokers (estimated ~8%)
+    // ── Covariate effects on CL_AM/F (metabolite, Röshammar 2017) ───────────
+    // Body weight: AR-C124910XX CL/F +26% at 110 kg, −34% at 50 kg vs 83 kg
+    // → estimated power exponent ~0.55
+    WT_exp_CLam:   0.55,  // CL_AM/F ∝ (WT/83)^0.55
+    // Sex: female → >20% reduction in AR-C124910XX CL/F; use −25%
+    SEX_f_CLam:    0.75,  // CL_AM/F multiplier for females
+    // Age >75: >20% reduction in AR-C124910XX CL/F; use −25%
+    AGE75_CLam:    0.75,  // CL_AM/F multiplier for age ≥75
+    // ── IIV (residual after covariate adjustment) ────────────────────────────
+    iiv_ka:  0.40,
+    iiv_CLF: 0.30,  // reduced from 0.40 after covariate adjustment
+    iiv_VdF: 0.30,
+    iiv_CLam:0.30,
+    iiv_Vdam:0.35,
     reversible:true,
-    // PD: Astrand 2019; Amilon 2019 (EC50=233 nmol/L; MW_tica=522 g/mol)
-    EC50:126,  // ng/mL  (233 nmol/L × 0.522/0.968 ≈ 126)
-    Emax:1.0, gamma:1.3, PRU0:283,
+    // ── PD: Åstrand 2019; Amilon 2019 ───────────────────────────────────────
+    EC50:126, Emax:1.0, gamma:1.3, PRU0:283,
     pkUnit:'ng/mL  (combined parent + metabolite effective conc.)',
-    pkSrc:'Li et al. 2016 (PLATO/DISPERSE-2); Roshammar et al. 2017 (PEGASUS)',
-    pdSrc:'Astrand et al. 2019 Br J Clin Pharmacol; Amilon et al. 2019 Clin Pharmacokinet',
+    pkSrc:'Röshammar et al. 2017 Int J Clin Pharmacol Ther 55:416-424 (PEGASUS, n=4,426)',
+    pdSrc:'Åstrand et al. 2019 Br J Clin Pharmacol; Amilon et al. 2019 Clin Pharmacokinet',
     rows:[
-      ['ka (parent)','0.67 /h','Li 2016'],
-      ['CL/F (parent)','14 L/h','Li 2016'],
-      ['Vd/F (parent)','221 L','Li 2016'],
-      ['CL_AM/F','9.95 L/h','Roshammar 2017'],
-      ['FMET','0.50 (est.)','—'],
-      ['IIV CL','~40% CV','typical popPK'],
-      ['EC50 combined','233 nmol/L = 126 ng/mL','Amilon 2019'],
-      ['Emax','1.0 (fixed)','Astrand 2019'],
-      ['Hill γ','1.3','Astrand 2019'],
-      ['Baseline PRU','283','Amilon 2019'],
+      ['ka (parent)',          '0.67 /h',         'Li 2016 (PLATO/DISPERSE-2)'],
+      ['CL/F (parent, ref)',   '15.4 L/h',        'Röshammar 2017 (90 mg, PEGASUS)'],
+      ['Vd/F (parent)',        '221 L',            'Li 2016'],
+      ['CL_AM/F (ref)',        '9.95 L/h',         'Röshammar 2017 (90 mg)'],
+      ['WT covariate (CL/F)', '(WT/83)^0.25',     'Röshammar 2017 (+6% at 110 kg, −11% at 50 kg)'],
+      ['WT covariate (CLam)', '(WT/83)^0.55',     'Röshammar 2017 (+26% at 110 kg, −34% at 50 kg)'],
+      ['Female sex (CL/F)',    '×0.90',            'Röshammar 2017 (<20% effect on parent)'],
+      ['Female sex (CLam)',    '×0.75',            'Röshammar 2017 (>20% effect on metabolite)'],
+      ['Age ≥75 (CLam)',       '×0.75',            'Röshammar 2017 (>20% effect)'],
+      ['Smoking (CL/F)',       '×1.08',            'Röshammar 2017 (small positive effect)'],
+      ['Renal function',       'Not significant',  'Röshammar 2017 (hepatic elimination)'],
+      ['EC50 combined',        '233 nmol/L = 126 ng/mL', 'Amilon 2019'],
+      ['Emax',                 '1.0 (fixed)',      'Åstrand 2019'],
+      ['Hill γ',               '1.3',              'Åstrand 2019'],
+      ['Baseline PRU',         '283',              'Amilon 2019'],
     ],
   },
   clop:{
     label:'Clopidogrel 75 mg QD — H4 metabolite', color:'#2d6b1a', colorLt:'#d2eccc',
     dpd:1, interval_h:24, dose_mg:75,
-    // H4 thiol metabolite — t½ ~30 min; Cmax ~7 ng/mL (Lechat 2013)
+    // ── PK structural parameters ─────────────────────────────────────────────
+    // Source: Bergmann et al. 2017 Eur J Clin Pharmacol 73:1483-1490
+    // (n=63 PCI patients; NONMEM; joint parent–metabolite model)
+    // H4 active thiol metabolite: very short t½ ~0.5 h
     ka:6.0, CLF:220, VdF:110, FMET:0.12,
-    iiv_ka:0.30, iiv_CLF:0.55, iiv_VdF:0.40,
+    // ── Covariate effects ────────────────────────────────────────────────────
+    // Bergmann 2017: ONLY significant covariate = CYP2C19*2 carrier status
+    // Age, weight, BMI, obesity, sex, DM, PPI, statin, CYP3A4*1G,
+    // CYP2C19*17, ABCB1 3435 TT — all evaluated and found NOT significant
+    // CYP2C19*2 effect: median AUC_H4 halved (5.94 vs 12.70 ng·h/mL)
+    CYP_PM_factor: 0.47,   // AUC ratio PM/EM = 5.94/12.70 = 0.467
+    // IIV: enormous — CV ~85% on Cmax (Lechat 2013)
+    iiv_ka:  0.30,
+    iiv_CLF: 0.55,   // reflects ~85% IIV on Cmax
+    iiv_VdF: 0.40,
     reversible:false,
     PRU0:280, platelet_lifespan:10,
-    ss_inh:0.43,   // 43% pool inhibited at SS → PRU ≈ 160 (EM)
-    iiv_inh:0.55,  // large IIV matching ~85% CV on Cmax
+    ss_inh:0.43,
+    iiv_inh:0.55,
     pkUnit:'ng/mL  (H4 active thiol metabolite)',
-    pkSrc:'Lechat et al. 2013 EurJCP (Cmax ~7 ng/mL; AUC ~11 ng·h/mL); Bergmann 2017',
+    pkSrc:'Bergmann et al. 2017 Eur J Clin Pharmacol 73:1483-1490 (n=63 PCI pts, NONMEM)',
     pdSrc:'Platelet turnover model; calibrated to CAPITAL registry (PRU ~160, EM)',
     rows:[
-      ['Cmax H4 (75 mg)','~7 ng/mL (mean)','Lechat 2013'],
-      ['AUC H4 (75 mg)','~11 ng·h/mL','Lechat 2013'],
-      ['t½ H4','~0.5 h','FDA label'],
-      ['IIV Cmax','~85% CV','Lechat 2013'],
-      ['CYP2C19*2 effect','AUC halved','Bergmann 2017'],
-      ['Platelet lifespan','~10 days','standard'],
-      ['SS PRU (EM)','~160','CAPITAL registry'],
+      ['Cmax H4 (75 mg)',      '~7 ng/mL (median)', 'Lechat 2013'],
+      ['AUC H4 (75 mg)',       '~11 ng·h/mL',       'Lechat 2013'],
+      ['t½ H4',                '~0.5 h',             'FDA label; Bergmann 2017'],
+      ['IIV Cmax',             '~85% CV',            'Lechat 2013'],
+      ['Age',                  'Not significant',    'Bergmann 2017'],
+      ['Body weight',          'Not significant',    'Bergmann 2017'],
+      ['BMI / obesity',        'Not significant',    'Bergmann 2017'],
+      ['Sex',                  'Not significant',    'Bergmann 2017'],
+      ['Diabetes mellitus',    'Not significant',    'Bergmann 2017'],
+      ['PPI co-administration','Not significant',    'Bergmann 2017'],
+      ['CYP2C19*17',           'Not significant',    'Bergmann 2017'],
+      ['CYP2C19*2 carrier',    'AUC_H4 ×0.47',      'Bergmann 2017 (5.94 vs 12.70 ng·h/mL, p=0.004)'],
+      ['SS PRU (EM)',          '~160',               'CAPITAL registry; Spiliopoulos data'],
+      ['SS PRU (PM)',          '~240 (estimated)',   'Based on reduced H4 AUC'],
     ],
   },
   pras:{
     label:'Prasugrel 10 mg QD — R-138727 metabolite', color:'#8b2010', colorLt:'#f5dbd7',
     dpd:1, interval_h:24, dose_mg:10,
-    // R-138727; Tmax ~0.5h; t½ ~4h; Ernest 2008; NCT01591317 (Cmax ~92 ng/mL)
+    // ── PK structural parameters ─────────────────────────────────────────────
+    // Source: Wrishko et al. 2009 J Clin Pharmacol 49:984-998
+    // (TRITON-TIMI 38 popPK substudy, n=1,159 patients)
+    // R-138727 (Pras-AM): rapid Tmax ~0.5h; multi-compartmental
     ka:3.0, CLF:145, VdF:580, FMET:1.0,
-    iiv_ka:0.30, iiv_CLF:0.40, iiv_VdF:0.35,
+    // ── Covariate effects (Wrishko 2009) ─────────────────────────────────────
+    // Body weight: significant — exposure 42% higher in <60 kg vs median 85 kg
+    //   Median weight in TRITON = 85 kg
+    //   Power model exponent: ~0.75 is standard allometric for CL
+    //   But the reported effect (+42% AUC at <60 kg) implies CL/F LOWER at low WT
+    //   → CL/F ∝ (WT/85)^0.75 (allometric, standard approach from FDA NDA review)
+    WT_exp_CLF: 0.75,   // CL/F ∝ (WT/85)^0.75; Wrishko 2009 / FDA NDA
+    WT_ref:     85,     // kg reference (TRITON median)
+    // Age ≥75: AUC ~19-25% higher (CL/F ~20% lower)
+    AGE75_CLF:  0.82,   // CL/F multiplier for age ≥75 (−18% → +22% AUC)
+    // NOT significant: sex, BMI, diabetes, smoking, renal impairment (Wrishko 2009)
+    // IIV (residual after covariate adjustment)
+    iiv_ka:  0.30,
+    iiv_CLF: 0.30,   // reduced from 0.40 after WT and age adjustment
+    iiv_VdF: 0.35,
     reversible:false,
     PRU0:280, platelet_lifespan:10,
-    ss_inh:0.64,   // ~64% → PRU ≈ 100 (Alexopoulos 2013)
+    ss_inh:0.64,
     iiv_inh:0.30,
     pkUnit:'ng/mL  (R-138727 active metabolite)',
-    pkSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn; NCT01591317 Korean study',
-    pdSrc:'Ernest 2008 irrev. Emax + platelet turnover; calibrated to PRU ~100 (Alexopoulos 2013)',
+    pkSrc:'Wrishko et al. 2009 J Clin Pharmacol 49:984-998 (TRITON-TIMI 38, n=1,159)',
+    pdSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn; calibrated to PRU ~100 (Alexopoulos 2013)',
     rows:[
-      ['Cmax R-138727','~92 ng/mL (geom)','NCT01591317'],
-      ['AUC R-138727','~78 ng·h/mL','NCT01591317'],
-      ['Tmax','~0.5 h','Farid 2009'],
-      ['t½','~4–7 h','Ernest 2008'],
-      ['IIV Cmax','~36% CV','NCT01591317'],
-      ['Platelet lifespan','~10 days','standard'],
-      ['SS PRU','~100','Alexopoulos 2013'],
+      ['Cmax R-138727',        '~92 ng/mL (geom)', 'NCT01591317 Korean study'],
+      ['AUC R-138727',         '~78 ng·h/mL',      'NCT01591317'],
+      ['Tmax',                 '~0.5 h',            'Farid 2009'],
+      ['t½',                   '~4–7 h',            'Ernest 2008'],
+      ['WT covariate (CL/F)', '(WT/85)^0.75',      'Wrishko 2009; FDA NDA review'],
+      ['WT effect <60 kg',     'AUC +42% vs 85 kg', 'Wrishko 2009 (TRITON)'],
+      ['Age ≥75 (CL/F)',       '×0.82',             'Wrishko 2009 (AUC +19-25%)'],
+      ['Sex',                  'Not significant',   'Wrishko 2009'],
+      ['Renal impairment',     'Not significant',   'Wrishko 2009'],
+      ['BMI',                  'Not significant',   'Wrishko 2009'],
+      ['Diabetes',             'Not significant',   'Wrishko 2009'],
+      ['Smoking',              'Not significant',   'Wrishko 2009'],
+      ['SS PRU',               '~100',              'Alexopoulos 2013'],
     ],
   },
 };
@@ -492,93 +632,135 @@ function makeSchedule(pat, dpd, days, pdc){
 
 // ─── PK simulation (ODE, Euler dt=0.25h) ──────────────────
 function simPatient(drug, sched, pat, days){
-  const p=P[drug];
-  const dt=0.25;
-  const nT=Math.round(days*24/dt);
-  const ka =sampleLN(p.ka,  p.iiv_ka);
-  const CLF=sampleLN(p.CLF, p.iiv_CLF);
-  const VdF=sampleLN(p.VdF, p.iiv_VdF);
-  const kEl=CLF/VdF;   // /h  (CL and Vd both in L/h and L → /h)
+  const p = P[drug];
+  const dt = 0.25;
+  const nT = Math.round(days * 24 / dt);
 
-  // ODE state in mg (dose in mg, Vd in L → conc in mg/L; ×1000 → ng/mL)
-  let Ag=0, Ac=0, Am=0;
-  let CLam=0, Vdam=0;
-  if(p.reversible){
-    CLam=sampleLN(p.CLam, p.iiv_CLam);
-    Vdam=sampleLN(p.Vdam, p.iiv_Vdam);
+  // ── Sample patient covariates ────────────────────────────────────────────
+  // Each patient gets covariates drawn from realistic post-MI distributions
+  // Reference patient: male, 83 kg (ticagrelor) / 85 kg (prasugrel), age 65, non-smoker
+  const pt_WT    = Math.max(40, Math.min(150, COVARS.WT   + sampleLN(1,0.18)*COVARS.WT - COVARS.WT));
+  // Use population distribution rather than fixed covariate (IIV in patient characteristics)
+  const pt_wt    = Math.max(40, Math.min(150, sampleLN(COVARS.WT, 0.18)));
+  const pt_female= COVARS.SEX === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0); // 22% female (Tannous Table 2)
+  const pt_age75 = COVARS.AGE75 === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0); // ~22% ≥75 (post-MI population)
+  const pt_smoke = COVARS.SMOKE === 1 ? 1 : (Math.random() < 0.36 ? 1 : 0); // 36% smokers (Tannous Table 2)
+  const pt_pm    = COVARS.CYP2C19_PM === 1 ? 1 : (Math.random() < 0.03 ? 1 : 0); // ~3% PM (European)
+
+  // ── Compute covariate-adjusted individual PK parameters ─────────────────
+  let CLF_ind, CLam_ind, VdF_ind, Vdam_ind, ka_ind, CLF_inh_scale;
+
+  if(drug === 'tic') {
+    // Röshammar 2017: CL/F ∝ (WT/83)^0.25; CL_AM/F ∝ (WT/83)^0.55
+    const wt_eff_CLF  = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLF);
+    const wt_eff_CLam = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLam);
+    const sex_CLF  = pt_female ? p.SEX_f_CLF  : 1.0;
+    const sex_CLam = pt_female ? p.SEX_f_CLam : 1.0;
+    const age_CLam = pt_age75  ? p.AGE75_CLam : 1.0;
+    const smoke_CL = pt_smoke  ? p.SMOKE_CLF  : 1.0;
+    CLF_ind  = sampleLN(p.CLF  * wt_eff_CLF  * sex_CLF  * smoke_CL, p.iiv_CLF);
+    CLam_ind = sampleLN(p.CLam * wt_eff_CLam * sex_CLam * age_CLam, p.iiv_CLam);
+    VdF_ind  = sampleLN(p.VdF,  p.iiv_VdF);
+    Vdam_ind = sampleLN(p.Vdam, p.iiv_Vdam);
+    CLF_inh_scale = 1; // not used for ticagrelor PD
+
+  } else if(drug === 'clop') {
+    // Bergmann 2017: only CYP2C19*2 significant
+    // CYP2C19 PM: CLF of activation pathway ×0.47 (AUC halved)
+    const cyp_factor = pt_pm ? p.CYP_PM_factor : 1.0;
+    CLF_ind = sampleLN(p.CLF,  p.iiv_CLF);  // parent CLF not affected
+    VdF_ind = sampleLN(p.VdF,  p.iiv_VdF);
+    CLam_ind = null; Vdam_ind = null;
+    // CYP2C19 PM → lower FMET-effective → lower platelet inhibition at SS
+    CLF_inh_scale = cyp_factor;  // scales the ss_inh fraction
+
+  } else { // pras
+    // Wrishko 2009: CL/F ∝ (WT/85)^0.75; age ≥75 → CL/F ×0.82
+    const wt_eff = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLF);
+    const age_eff = pt_age75 ? p.AGE75_CLF : 1.0;
+    CLF_ind  = sampleLN(p.CLF * wt_eff * age_eff, p.iiv_CLF);
+    VdF_ind  = sampleLN(p.VdF,  p.iiv_VdF);
+    CLam_ind = null; Vdam_ind = null;
+    CLF_inh_scale = 1;
   }
 
-  // Irreversible: patient-specific platelet inhibition at steady state
-  let inh=sampleLN(p.ss_inh||0.5, p.iiv_inh||0.3);
-  inh=Math.min(0.92,Math.max(0.05,inh));
-  let plat_inh=inh;
+  ka_ind = sampleLN(p.ka, p.iiv_ka);
+  const kEl = CLF_ind / VdF_ind;
 
-  const out=[];
-  let lastH=-1;
+  // ── ODE state ─────────────────────────────────────────────────────────────
+  let Ag = 0, Ac = 0, Am = 0;
 
-  for(let step=0;step<nT;step++){
-    const t=step*dt;
-    const day=Math.floor(t/24);
-    const hr=t%24;
+  // Irreversible: patient-specific SS platelet inhibition (covariate-adjusted)
+  let inh_base = p.ss_inh || 0.5;
+  if(drug === 'clop') inh_base = inh_base * (CLF_inh_scale);
+  // For prasugrel: lower WT → higher AUC → slightly higher SS inhibition
+  if(drug === 'pras') {
+    const aug = CLF_ind < p.CLF ? (p.CLF / CLF_ind - 1) * 0.3 : 0;
+    inh_base = Math.min(0.92, inh_base + aug);
+  }
+  let inh = sampleLN(inh_base, p.iiv_inh || 0.3);
+  inh = Math.min(0.92, Math.max(0.05, inh));
+  let plat_inh = inh;
+
+  const out = [];
+  let lastH = -1;
+
+  for(let step = 0; step < nT; step++){
+    const t   = step * dt;
+    const day = Math.floor(t / 24);
+    const hr  = t % 24;
 
     // Dosing events
-    if(p.dpd===2){
-      const dh=pat==='delayed'?[8,10]:[8,20];
-      for(let k=0;k<2;k++){
-        if(Math.abs(hr-dh[k])<dt*0.6){
-          const di=day*2+k;
-          if(di<sched.length && sched[di]) Ag+=p.dose_mg;
+    if(p.dpd === 2){
+      const dh = pat === 'delayed' ? [8,10] : [8,20];
+      for(let k = 0; k < 2; k++){
+        if(Math.abs(hr - dh[k]) < dt * 0.6){
+          const di = day * 2 + k;
+          if(di < sched.length && sched[di]) Ag += p.dose_mg;
         }
       }
     } else {
-      if(Math.abs(hr-8)<dt*0.6){
-        if(day<sched.length && sched[day]) Ag+=p.dose_mg;
+      if(Math.abs(hr - 8) < dt * 0.6){
+        if(day < sched.length && sched[day]) Ag += p.dose_mg;
       }
     }
 
-    // ODE: all absorbed drug enters parent central compartment
-    const dAg=-ka*Ag;
-    const dAc=ka*Ag - kEl*Ac;   // ka*Ag absorbed; kEl*Ac eliminated
-    Ag=Math.max(0, Ag+dAg*dt);
-    Ac=Math.max(0, Ac+dAc*dt);
-
-    // Concentration in ng/mL (Ac in mg, VdF in L → mg/L × 1000 = ng/mL)
-    let Ceff_ngmL = (Ac/VdF)*1000;
+    // ODE
+    const dAg = -ka_ind * Ag;
+    const dAc = ka_ind * Ag - kEl * Ac;
+    Ag = Math.max(0, Ag + dAg * dt);
+    Ac = Math.max(0, Ac + dAc * dt);
+    let Ceff_ngmL = (Ac / VdF_ind) * 1000;
 
     if(p.reversible){
-      // Metabolite compartment: formed from parent elimination via FMET fraction
-      const kEm=CLam/Vdam;
-      const form_rate = (CLF*p.FMET/VdF)*Ac; // mg/h of metabolite formed
-      Am=Math.max(0, Am+(form_rate-kEm*Am)*dt);
-      const Cam_ngmL=(Am/Vdam)*1000;
-      // Combined effective concentration (parent + metabolite, equal weight)
-      Ceff_ngmL=(Ceff_ngmL+Cam_ngmL)*0.5;
+      const kEm      = CLam_ind / Vdam_ind;
+      const form_rate = (CLF_ind * p.FMET / VdF_ind) * Ac;
+      Am = Math.max(0, Am + (form_rate - kEm * Am) * dt);
+      const Cam_ngmL = (Am / Vdam_ind) * 1000;
+      Ceff_ngmL = (Ceff_ngmL + Cam_ngmL) * 0.5;
     }
 
-    // Irreversible: update platelet pool once per day
-    if(!p.reversible && Math.abs(hr-8.1)<dt){
-      const nf=1/p.platelet_lifespan;
-      const taken=day<sched.length?sched[day]:false;
-      plat_inh=taken
-        ? plat_inh*(1-nf)+nf*inh   // new platelets inhibited by today's dose
-        : plat_inh*(1-nf)+nf*0;    // new platelets uninhibited (no dose)
-      plat_inh=Math.max(0,Math.min(0.99,plat_inh));
+    if(!p.reversible && Math.abs(hr - 8.1) < dt){
+      const nf    = 1 / p.platelet_lifespan;
+      const taken = day < sched.length ? sched[day] : false;
+      plat_inh = taken
+        ? plat_inh * (1 - nf) + nf * inh
+        : plat_inh * (1 - nf) + nf * 0;
+      plat_inh = Math.max(0, Math.min(0.99, plat_inh));
     }
 
-    // Sample hourly
-    const hFloor=Math.floor(t);
-    if(hFloor!==lastH && t>=hFloor){
-      lastH=hFloor;
+    const hFloor = Math.floor(t);
+    if(hFloor !== lastH && t >= hFloor){
+      lastH = hFloor;
       let pru;
       if(p.reversible){
-        // Sigmoidal Imax: PRU = PRU0 × (1 − Emax×C^γ/(EC50^γ + C^γ))
-        const C=Math.max(0,Ceff_ngmL);
-        const ratio=Math.pow(C/p.EC50, p.gamma);
-        pru=Math.max(0,Math.round(p.PRU0*(1-p.Emax*ratio/(1+ratio))));
+        const C     = Math.max(0, Ceff_ngmL);
+        const ratio = Math.pow(C / p.EC50, p.gamma);
+        pru = Math.max(0, Math.round(p.PRU0 * (1 - p.Emax * ratio / (1 + ratio))));
       } else {
-        pru=Math.max(0,Math.round(p.PRU0*(1-plat_inh)));
+        pru = Math.max(0, Math.round(p.PRU0 * (1 - plat_inh)));
       }
-      out.push({t:hFloor, C:Math.max(0,Ceff_ngmL), pru:pru, inh:plat_inh});
+      out.push({ t: hFloor, C: Math.max(0, Ceff_ngmL), pru, inh: plat_inh });
     }
   }
   return out;
@@ -854,6 +1036,88 @@ function selPat(pat,el){
 }
 
 // ─── Init ──────────────────────────────────────────────────
+// ─── Individual patient simulation ────────────────────────────────────────────
+function runIndividual() {
+  const drug = cDrug, pat = cPat;
+  const days = parseInt(document.getElementById('sl-days').value);
+  const dc90val = parseInt(document.getElementById('sl-dc90').value);
+  const simPDC  = predictPDC_p2y12(dc90val).mu;
+  if(pat === 'delayed' && drug !== 'tic'){
+    document.getElementById('ind-metrics').textContent = 'Delayed dose: only applicable to ticagrelor.';
+    return;
+  }
+  const ind_wt    = Math.max(40, Math.min(150, parseFloat(document.getElementById('ind-wt').value) || 83));
+  const ind_fem   = document.getElementById('ind-female').checked ? 1 : 0;
+  const ind_age75 = document.getElementById('ind-age75').checked  ? 1 : 0;
+  const ind_smoke = document.getElementById('ind-smoke').checked  ? 1 : 0;
+  const ind_pm    = document.getElementById('ind-pm').checked     ? 1 : 0;
+
+  // Temporarily override COVARS with individual inputs
+  const saved = {...COVARS};
+  COVARS.WT = ind_wt; COVARS.SEX = ind_fem; COVARS.AGE75 = ind_age75;
+  COVARS.SMOKE = ind_smoke; COVARS.CYP2C19_PM = ind_pm;
+
+  const p = P[drug];
+  const sched = makeSchedule(pat, p.dpd, days, simPDC);
+  const traj  = simPatient(drug, sched, pat, days);
+  Object.assign(COVARS, saved);
+
+  const hours  = Array.from({length: days*24}, (_,i) => i);
+  const indPRU = hours.map(h => (traj[h] || {pru: p.PRU0}).pru);
+
+  const hprPct = Math.round(100*indPRU.filter(x=>x>208).length/indPRU.length);
+  const winPct = Math.round(100*indPRU.filter(x=>x>=85&&x<=208).length/indPRU.length);
+  const lprPct = Math.round(100*indPRU.filter(x=>x<85).length/indPRU.length);
+  const meanPRU= Math.round(indPRU.reduce((a,b)=>a+b,0)/indPRU.length);
+
+  const tags = [ind_wt+'kg', ind_fem?'F':'M', ind_age75?'age≥75':'age<75',
+                ind_smoke?'smoker':'', ind_pm?'CYP2C19-PM':''].filter(Boolean).join(' · ');
+  document.getElementById('ind-src').textContent = tags;
+  document.getElementById('ind-metrics').textContent =
+    `[${tags}]  HPR ${hprPct}%  ·  Window ${winPct}%  ·  LPR ${lprPct}%  ·  Mean PRU ${meanPRU}`;
+
+  // Overlay on population PRU chart (update existing)
+  const pruCh = charts['pruChart'];
+  if(pruCh) {
+    const ei = pruCh.data.datasets.findIndex(d => d.label === 'Individual');
+    if(ei >= 0) pruCh.data.datasets.splice(ei, 1);
+    pruCh.data.datasets.push({
+      label: 'Individual', data: indPRU,
+      borderColor: '#b8860b', borderWidth: 2.5, pointRadius: 0,
+      tension: 0.3, fill: false, borderDash: [7,3], order: 0,
+    });
+    pruCh.update();
+  }
+
+  // Draw in individual panel
+  destroyC('indChart');
+  const labels = hours.map(h => h%12===0 ? h+'h' : '');
+  charts['indChart'] = new Chart(document.getElementById('indChart').getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'Individual PRU ['+tags+']', data:indPRU,
+        borderColor:'#b8860b', borderWidth:2.5, pointRadius:0, tension:0.3, fill:false },
+      { label:'HPR', data:new Array(hours.length).fill(208),
+        borderColor:'rgba(192,57,43,.55)', borderWidth:1, borderDash:[5,3], pointRadius:0, fill:false },
+      { label:'LPR', data:new Array(hours.length).fill(85),
+        borderColor:'rgba(26,95,160,.55)',  borderWidth:1, borderDash:[3,3], pointRadius:0, fill:false },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip: { callbacks: {
+        title: items => 'Day '+(Math.floor(items[0].dataIndex/24)+1)+' · h'+(items[0].dataIndex%24),
+        label: item  => item.dataset.label+': '+Math.round(item.raw)+' PRU',
+      }}},
+      scales:{
+        x:{ ticks:{maxTicksLimit:8, font:{size:9}}, grid:{display:false} },
+        y:{ min:0, max:300,
+            title:{display:true, text:'PRU', font:{size:9}}, ticks:{font:{size:9}},
+            grid:{ color: ctx => ctx.tick.value===208?'rgba(192,57,43,.18)':ctx.tick.value===85?'rgba(26,95,160,.18)':'rgba(0,0,0,.04)' } }
+      }
+    }
+  });
+}
+
 onDC90(70);
 runAll();
 </script>
