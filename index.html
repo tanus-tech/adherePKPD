@@ -337,61 +337,88 @@ const P = {
     label:'Ticagrelor 90 mg BID', color:'#1a5fa0', colorLt:'#d0e5f7',
     dpd:2, interval_h:12, dose_mg:90,
     // ── PK structural parameters ─────────────────────────────────────────────
-    // Source: Röshammar et al. 2017 Int J Clin Pharmacol Ther 55:416-424
-    // (PEGASUS n=4,426 post-MI patients; 90 mg arm)
-    // One-compartment parent + one-compartment metabolite
-    ka:0.67,       // /h  (from Li 2016, PLATO/DISPERSE-2)
-    CLF:15.4,      // L/h (90 mg arm; Röshammar 2017 Table 2)
-    VdF:221,       // L   (from Li 2016)
-    FMET:0.50,     // fraction forming AR-C124910XX (estimated)
-    CLam:9.95,     // L/h (AR-C124910XX, 90 mg arm; Röshammar 2017)
-    Vdam:140,      // L   (estimated to match observed metabolite PK)
-    // ── Covariate effects on CL/F (parent, Röshammar 2017) ──────────────────
-    // Body weight: power model, reference 83 kg
-    // ticagrelor CL/F: +6% at 110 kg, −11% at 50 kg vs 83 kg reference
-    // → estimated power exponent ~0.25 (conservative; exact value not in abstract)
-    WT_exp_CLF:    0.25,  // CL/F ∝ (WT/83)^0.25
-    WT_ref:        83,    // kg (reference weight, Röshammar 2017)
-    // Sex: female → modest reduction in parent CL/F (<20%); use −10% for parent
-    SEX_f_CLF:     0.90,  // CL/F multiplier for females (parent); <20% effect
-    // Smoking: slight increase in CL/F; Röshammar 2017 reports small positive effect
-    SMOKE_CLF:     1.08,  // CL/F multiplier for current smokers (estimated ~8%)
-    // ── Covariate effects on CL_AM/F (metabolite, Röshammar 2017) ───────────
-    // Body weight: AR-C124910XX CL/F +26% at 110 kg, −34% at 50 kg vs 83 kg
-    // → estimated power exponent ~0.55
-    WT_exp_CLam:   0.55,  // CL_AM/F ∝ (WT/83)^0.55
-    // Sex: female → >20% reduction in AR-C124910XX CL/F; use −25%
-    SEX_f_CLam:    0.75,  // CL_AM/F multiplier for females
-    // Age >75: >20% reduction in AR-C124910XX CL/F; use −25%
-    AGE75_CLam:    0.75,  // CL_AM/F multiplier for age ≥75
-    // ── IIV (residual after covariate adjustment) ────────────────────────────
-    iiv_ka:  0.40,
-    iiv_CLF: 0.30,  // reduced from 0.40 after covariate adjustment
-    iiv_VdF: 0.30,
-    iiv_CLam:0.30,
-    iiv_Vdam:0.35,
+    // Source: Åstrand et al. 2019 Br J Clin Pharmacol 85:413-421 (Table 2)
+    // TWO-COMPARTMENT with Erlang absorption (8 transit compartments)
+    // Used because Röshammar 2017 V/F=323L gives t½=14.5h (too slow) whereas
+    // Åstrand 2019 gives t½_eff≈8.8h, consistent with clinical data.
+    // Covariate effects from Röshammar 2017 applied to Åstrand 2019 CL/F.
+    // PK structure: Erlang KTR → central (Vc) ↔ peripheral (Vp)
+    KTR: 10.1,     // /h  — transit rate constant (8 transits); Åstrand 2019 Table 2 (RSE 5.8%)
+    n_transit: 8,  // number of transit compartments (Åstrand 2019)
+    lag_MI: 0.48,  // h   — absorption lag time for prior MI patients; Åstrand 2019 Table 2
+    CLF:16.6,      // L/h — Åstrand 2019 Table 2 (RSE 3.6%)
+    VcF:156,       // L   — central volume; Åstrand 2019 Table 2 (RSE 4.2%)
+    VpF:55.8,      // L   — peripheral volume; Åstrand 2019 Table 2 (RSE 8.3%)
+    QF: 10.4,      // L/h — inter-compartment clearance; Åstrand 2019 Table 2 (RSE 4.7%)
+    FMET:0.22,     // fraction metabolized — FIXED; both Röshammar 2017 & Åstrand 2019
+    CLam:10.2,     // L/h — AR-C124910XX CL/F; Åstrand 2019 Table 2 (RSE 3.0%)
+    VcamF:7.04,    // L   — AR-C124910XX central; Åstrand 2019 Table 2 (RSE 6.7%)
+    VpamF:42.3,    // L   — AR-C124910XX peripheral; Åstrand 2019 Table 2 (RSE 6.1%)
+    QamF:4.41,     // L/h — AR-C124910XX inter-compartment; Åstrand 2019 Table 2 (RSE 4.7%)
+    // ── Covariate effects — ALL EXACT VALUES from Röshammar 2017 Table 2 ────
+    // Log-additive parameterisation; multipliers = exp(coefficient)
+    WT_ref:       83,      // kg — reference weight in Röshammar 2017
+    WT_exp_CLF:   0.220,   // power exponent WT on CL/F parent (RSE 21.4%)
+    WT_exp_CLam:  0.834,   // power exponent WT on CL_AM/F (RSE 4.52%)
+    SEX_f_CLF:    Math.exp(-0.113), // female → parent CL/F ×0.893 (RSE 17.3%)
+    SEX_f_CLam:   Math.exp(-0.286), // female → metab CL/F ×0.751 (RSE 4.37%)
+    AGE75_CLF:    Math.exp(-0.152), // age >75 → parent CL/F ×0.859 (RSE 16.6%)
+    AGE75_CLam:   Math.exp(-0.264), // age >75 → metab CL/F ×0.768 (RSE 6.41%)
+    SMOKE_CLF:    Math.exp(+0.0806),// smoker → parent CL/F ×1.084 (RSE 31.3%)
+    SMOKE_CLam:   Math.exp(+0.116), // smoker → metab CL/F ×1.123 (RSE 18.3%)
+    // ── IIV from Åstrand 2019 Table 2 ───────────────────────────────────────
+    iiv_CLF: 0.24,   // 24% CV on CL/F (RSE 8.1%)
+    iiv_VcF: 0.54,   // 54% CV on Vc/F (RSE 7.9%)
+    iiv_VpF: 0.32,   // 32% CV on Vp/F (RSE 6.6%)
+    iiv_QF:  0.95,   // 95% CV on Q/F  (RSE 45%)
+    iiv_KTR: 0.28,   // 28% CV on KTR  (RSE 9.2%)
+    iiv_CLam:0.37,   // 37% CV on CLm/F (RSE 29%)
+    iiv_VpamF:0.30,  // BSV on Vpm/F (not explicitly reported; conservative)
+    // Röshammar 2017 IIV retained for covariate residual variability reference:
+    // iiv_CLF_Roshammar: 0.468, iiv_VdF: 0.643, corr: 0.300
     reversible:true,
-    // ── PD: Åstrand 2019; Amilon 2019 ───────────────────────────────────────
-    EC50:126, Emax:1.0, gamma:1.3, PRU0:283,
-    pkUnit:'ng/mL  (combined parent + metabolite effective conc.)',
+    // ── PD: Åstrand et al. 2019 Br J Clin Pharmacol 85:413-421, Table 2 ────
+    // PD driven by TICAGRELOR CONCENTRATION ONLY (not sum with metabolite)
+    // "model utilizing only ticagrelor for the drug effect was chosen" (Åstrand 2019)
+    EC50_nmol: 116,        // nmol/L — Åstrand 2019 Table 2 (RSE 5.3%; BSV 66%)
+    // Convert to ng/mL: MW ticagrelor = 522.6 g/mol → 116 nmol/L × 0.5226 = 60.6 ng/mL
+    EC50: 60.6,            // ng/mL — Åstrand 2019 (ticagrelor only)
+    Emax: 0.985,           // 98.5% — Åstrand 2019 Table 2
+    gamma: 1.59,           // Hill exponent — Åstrand 2019 Table 2
+    PRU0: 261,             // PRUbaseline PEGASUS population — Åstrand 2019 Table 2
+    // BSV on PD parameters (Åstrand 2019 Table 2):
+    iiv_EC50: 0.66,        // 66% CV (log-normal)
+    iiv_Emax: 0.33,        // logit scale std dev
+    pkUnit:'ng/mL  (ticagrelor parent only — PD model uses parent concentration)',
     pkSrc:'Röshammar et al. 2017 Int J Clin Pharmacol Ther 55:416-424 (PEGASUS, n=4,426)',
-    pdSrc:'Åstrand et al. 2019 Br J Clin Pharmacol; Amilon et al. 2019 Clin Pharmacokinet',
+    pdSrc:'Åstrand et al. 2019 Br J Clin Pharmacol 85:413-421 (Table 2)',
     rows:[
-      ['ka (parent)',          '0.67 /h',         'Li 2016 (PLATO/DISPERSE-2)'],
-      ['CL/F (parent, ref)',   '15.4 L/h',        'Röshammar 2017 (90 mg, PEGASUS)'],
-      ['Vd/F (parent)',        '221 L',            'Li 2016'],
-      ['CL_AM/F (ref)',        '9.95 L/h',         'Röshammar 2017 (90 mg)'],
-      ['WT covariate (CL/F)', '(WT/83)^0.25',     'Röshammar 2017 (+6% at 110 kg, −11% at 50 kg)'],
-      ['WT covariate (CLam)', '(WT/83)^0.55',     'Röshammar 2017 (+26% at 110 kg, −34% at 50 kg)'],
-      ['Female sex (CL/F)',    '×0.90',            'Röshammar 2017 (<20% effect on parent)'],
-      ['Female sex (CLam)',    '×0.75',            'Röshammar 2017 (>20% effect on metabolite)'],
-      ['Age ≥75 (CLam)',       '×0.75',            'Röshammar 2017 (>20% effect)'],
-      ['Smoking (CL/F)',       '×1.08',            'Röshammar 2017 (small positive effect)'],
-      ['Renal function',       'Not significant',  'Röshammar 2017 (hepatic elimination)'],
-      ['EC50 combined',        '233 nmol/L = 126 ng/mL', 'Amilon 2019'],
-      ['Emax',                 '1.0 (fixed)',      'Åstrand 2019'],
-      ['Hill γ',               '1.3',              'Åstrand 2019'],
-      ['Baseline PRU',         '283',              'Amilon 2019'],
+      ['PK model',            '2-cmt + 8 transit compartments',  'Åstrand 2019 Table 2'],
+      ['KTR (transit rate)',  '10.1 /h (RSE 5.8%)',              'Åstrand 2019 Table 2'],
+      ['Abs. lag (prior MI)', '0.48 h (RSE 11%)',                'Åstrand 2019 Table 2'],
+      ['CL/F',                '16.6 L/h (RSE 3.6%; BSV 24%)',    'Åstrand 2019 Table 2'],
+      ['Vc/F',                '156 L (RSE 4.2%; BSV 54%)',       'Åstrand 2019 Table 2'],
+      ['Vp/F',                '55.8 L (RSE 8.3%; BSV 32%)',      'Åstrand 2019 Table 2'],
+      ['Q/F',                 '10.4 L/h (RSE 4.7%; BSV 95%)',    'Åstrand 2019 Table 2'],
+      ['CLm/F (AM)',          '10.2 L/h (RSE 3.0%; BSV 37%)',    'Åstrand 2019 Table 2'],
+      ['Vcm/F (AM)',          '7.04 L (RSE 6.7%)',               'Åstrand 2019 Table 2'],
+      ['Vpm/F (AM)',          '42.3 L (RSE 6.1%)',               'Åstrand 2019 Table 2'],
+      ['Qm/F (AM)',           '4.41 L/h (RSE 4.7%)',             'Åstrand 2019 Table 2'],
+      ['FMET',                '0.22 (FIXED)',                    'Åstrand 2019; Röshammar 2017'],
+      ['WT → CL/F',          '(WT/83)^0.220',                   'Röshammar 2017 Table 2 (RSE 21.4%)'],
+      ['WT → CLm/F',         '(WT/83)^0.834',                   'Röshammar 2017 Table 2 (RSE 4.52%)'],
+      ['Female → CL/F',      '×exp(−0.113) = ×0.893',           'Röshammar 2017 Table 2 (RSE 17.3%)'],
+      ['Female → CLm/F',     '×exp(−0.286) = ×0.751',           'Röshammar 2017 Table 2 (RSE 4.37%)'],
+      ['Age >75 → CL/F',     '×exp(−0.152) = ×0.859',           'Röshammar 2017 Table 2 (RSE 16.6%)'],
+      ['Age >75 → CLm/F',    '×exp(−0.264) = ×0.768',           'Röshammar 2017 Table 2 (RSE 6.41%)'],
+      ['Smoking → CL/F',     '×exp(+0.0806) = ×1.084',          'Röshammar 2017 Table 2 (RSE 31.3%)'],
+      ['Smoking → CLm/F',    '×exp(+0.116) = ×1.123',           'Röshammar 2017 Table 2 (RSE 18.3%)'],
+      ['Renal function',      'Not significant',                 'Röshammar 2017'],
+      ['EC50 (PD)',           '116 nmol/L (RSE 5.3%; BSV 66%)',  'Åstrand 2019 Table 2'],
+      ['Emax (PD)',           '0.985 (RSE ~5%; BSV logit 0.33)', 'Åstrand 2019 Table 2'],
+      ['Hill γ (PD)',         '1.59',                            'Åstrand 2019 Table 2'],
+      ['PRUbaseline (PEGASUS)','261',                            'Åstrand 2019 Table 2'],
+      ['PD concentration',    'Ticagrelor parent only',          'Åstrand 2019 (Methods)'],
     ],
   },
   clop:{
@@ -439,47 +466,58 @@ const P = {
   pras:{
     label:'Prasugrel 10 mg QD — R-138727 metabolite', color:'#8b2010', colorLt:'#f5dbd7',
     dpd:1, interval_h:24, dose_mg:10,
-    // ── PK structural parameters ─────────────────────────────────────────────
-    // Source: Wrishko et al. 2009 J Clin Pharmacol 49:984-998
-    // (TRITON-TIMI 38 popPK substudy, n=1,159 patients)
-    // R-138727 (Pras-AM): rapid Tmax ~0.5h; multi-compartmental
-    ka:3.0, CLF:145, VdF:580, FMET:1.0,
-    // ── Covariate effects (Wrishko 2009) ─────────────────────────────────────
-    // Body weight: significant — exposure 42% higher in <60 kg vs median 85 kg
-    //   Median weight in TRITON = 85 kg
-    //   Power model exponent: ~0.75 is standard allometric for CL
-    //   But the reported effect (+42% AUC at <60 kg) implies CL/F LOWER at low WT
-    //   → CL/F ∝ (WT/85)^0.75 (allometric, standard approach from FDA NDA review)
-    WT_exp_CLF: 0.75,   // CL/F ∝ (WT/85)^0.75; Wrishko 2009 / FDA NDA
-    WT_ref:     85,     // kg reference (TRITON median)
-    // Age ≥75: AUC ~19-25% higher (CL/F ~20% lower)
-    AGE75_CLF:  0.82,   // CL/F multiplier for age ≥75 (−18% → +22% AUC)
-    // NOT significant: sex, BMI, diabetes, smoking, renal impairment (Wrishko 2009)
-    // IIV (residual after covariate adjustment)
-    iiv_ka:  0.30,
-    iiv_CLF: 0.30,   // reduced from 0.40 after WT and age adjustment
-    iiv_VdF: 0.35,
+    // ── PK structural parameters — Ernest et al. 2008 Table 2 ────────────────
+    // J Pharmacokinet Pharmacodyn 35:593-618
+    // Multi-compartmental model: depot → Pras-AM (k12) + Pras-thiolactone (k13)
+    // Pras-AM: 1-compartment (CL20/F, V2/F)
+    // Pras-thiolactone: 1-compartment + peripheral (k34, k43)
+    // Absorption: ZERO-ORDER duration D1 (not first-order ka)
+    D1:    0.473,   // h — zero-order absorption duration, Table 2 (RSE 9.98%)
+    k12:   6.55,    // /h — first-pass formation rate Pras-AM, Table 2 (RSE 42.3%)
+    k13:   3.12,    // /h — Pras-thiolactone appearance rate, Table 2 (RSE 42.6%)
+    // Note: k13 for 10mg MD: 3.12 × (1 + 0.197) = 3.73 /h (Table 2 footnote b)
+    k13_10mg_factor: 0.197, // dose effect on k13 for 10mg vs 60mg
+    k34:   0.562,   // /h — thiolactone → peripheral compartment (RSE 5.32%)
+    k43:   0.218,   // /h — peripheral → thiolactone (RSE 3.33%)
+    CLF:   149,     // L/h — CL20/F Pras-AM reference (RSE 3.98%), BSV 21.0% CV
+    // Note: 10mg dose CL20/F = 149 × (1 + 0.112) = 165.7 L/h (Table 2 footnote c)
+    CLF_dose_factor: 0.112, // dose effect on CL20/F for 10mg vs 60mg
+    VdF:   66.4,    // L   — V2/F Pras-AM, Table 2 (RSE 4.62%)
+    CL32F: 36.9,    // L/h — thiolactone→Pras-AM clearance (RSE 5.20%), BSV 31.1% CV
+    V3F:   60.5,    // L   — Pras-thiolactone Vd (RSE 5.82%), BSV 35.7% CV
+    // ── Covariate on CL20/F — Ernest 2008 Table 2 ──────────────────────────
+    // Exponential model (not power): CL20/F = 149 × exp((WT-85) × 0.0140)
+    WT_ref:      85,      // kg — reference weight (TRITON median)
+    WT_exp_coef: 0.0140,  // exponential coefficient on (WT-85), Table 2 (RSE 24.3%)
+    // Age ≥75: derived from Wrishko 2009 — AUC 19% higher → CL/F ×(1/1.19) = ×0.840
+    AGE75_CLF:   0.840,   // CL20/F multiplier for age ≥75 yr (Wrishko 2009)
+    // Sex, BMI, diabetes, smoking, renal: NOT significant (Wrishko 2009)
+    // ── IIV from Ernest 2008 Table 2 ────────────────────────────────────────
+    iiv_CLF: 0.210,  // 21.0% CV on CL20/F
+    iiv_CL32F: 0.311, // 31.1% CV on CL32/F
+    iiv_V3F:   0.357, // 35.7% CV on V3/F
     reversible:false,
     PRU0:280, platelet_lifespan:10,
     ss_inh:0.64,
     iiv_inh:0.30,
-    pkUnit:'ng/mL  (R-138727 active metabolite)',
-    pkSrc:'Wrishko et al. 2009 J Clin Pharmacol 49:984-998 (TRITON-TIMI 38, n=1,159)',
-    pdSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn; calibrated to PRU ~100 (Alexopoulos 2013)',
+    pkUnit:'ng/mL  (R-138727 Pras-AM)',
+    pkSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn 35:593-618 (Table 2)',
+    pdSrc:'Ernest et al. 2008 (irreversible platelet pool model); PRU calibrated to ~100 (Alexopoulos 2013)',
     rows:[
-      ['Cmax R-138727',        '~92 ng/mL (geom)', 'NCT01591317 Korean study'],
-      ['AUC R-138727',         '~78 ng·h/mL',      'NCT01591317'],
-      ['Tmax',                 '~0.5 h',            'Farid 2009'],
-      ['t½',                   '~4–7 h',            'Ernest 2008'],
-      ['WT covariate (CL/F)', '(WT/85)^0.75',      'Wrishko 2009; FDA NDA review'],
-      ['WT effect <60 kg',     'AUC +42% vs 85 kg', 'Wrishko 2009 (TRITON)'],
-      ['Age ≥75 (CL/F)',       '×0.82',             'Wrishko 2009 (AUC +19-25%)'],
-      ['Sex',                  'Not significant',   'Wrishko 2009'],
-      ['Renal impairment',     'Not significant',   'Wrishko 2009'],
-      ['BMI',                  'Not significant',   'Wrishko 2009'],
-      ['Diabetes',             'Not significant',   'Wrishko 2009'],
-      ['Smoking',              'Not significant',   'Wrishko 2009'],
-      ['SS PRU',               '~100',              'Alexopoulos 2013'],
+      ['Structural model',    'Multi-cmt zero-order absorption', 'Ernest 2008 (Fig. 3)'],
+      ['D1 (absorption)',     '0.473 h (RSE 9.98%)',             'Ernest 2008 Table 2'],
+      ['k12 (→ Pras-AM)',     '6.55 /h (RSE 42.3%)',            'Ernest 2008 Table 2'],
+      ['k13 (→ thiolactone)', '3.12 /h (RSE 42.6%)',            'Ernest 2008 Table 2'],
+      ['CL20/F (Pras-AM)',    '149 L/h; 10mg: ×1.112 = 165.7', 'Ernest 2008 Table 2 (RSE 3.98%)'],
+      ['V2/F (Pras-AM)',      '66.4 L (RSE 4.62%)',             'Ernest 2008 Table 2'],
+      ['CL32/F (→ Pras-AM)',  '36.9 L/h (RSE 5.20%)',          'Ernest 2008 Table 2'],
+      ['V3/F (thiolactone)',   '60.5 L (RSE 5.82%)',            'Ernest 2008 Table 2'],
+      ['IIV CL20/F',          '21.0% CV',                       'Ernest 2008 Table 2'],
+      ['WT → CL20/F',         '149×exp((WT−85)×0.0140)',        'Ernest 2008 Table 2 (RSE 24.3%)'],
+      ['Age ≥75 → CL20/F',    '×0.840 (AUC +19%)',             'Wrishko 2009 (TRITON-TIMI 38)'],
+      ['Sex',                  'Not significant',               'Wrishko 2009'],
+      ['Renal/BMI/DM/smoking', 'Not significant',               'Wrishko 2009'],
+      ['SS PRU',               '~100',                          'Alexopoulos 2013'],
     ],
   },
 };
@@ -629,75 +667,86 @@ function makeSchedule(pat, dpd, days, pdc){
 
 // ─── PK simulation (ODE, Euler dt=0.25h) ──────────────────
 function simPatient(drug, sched, pat, days){
-  const p = P[drug];
-  const dt = 0.25;
+  const p  = P[drug];
+  const dt = 0.1;   // h — step size; 0.1h adequate for t½>>1h
   const nT = Math.round(days * 24 / dt);
 
-  // ── Sample patient covariates ────────────────────────────────────────────
-  // Each patient gets covariates drawn from realistic post-MI distributions
-  // Reference patient: male, 83 kg (ticagrelor) / 85 kg (prasugrel), age 65, non-smoker
-  const pt_WT    = Math.max(40, Math.min(150, COVARS.WT   + sampleLN(1,0.18)*COVARS.WT - COVARS.WT));
-  // Use population distribution rather than fixed covariate (IIV in patient characteristics)
-  const pt_wt    = Math.max(40, Math.min(150, sampleLN(COVARS.WT, 0.18)));
-  const pt_female= COVARS.SEX === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0); // 22% female (Tannous Table 2)
-  const pt_age75 = COVARS.AGE75 === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0); // ~22% ≥75 (post-MI population)
-  const pt_smoke = COVARS.SMOKE === 1 ? 1 : (Math.random() < 0.36 ? 1 : 0); // 36% smokers (Tannous Table 2)
-  const pt_pm    = COVARS.CYP2C19_PM === 1 ? 1 : (Math.random() < 0.03 ? 1 : 0); // ~3% PM (European)
+  // ── Sample patient covariates ─────────────────────────────────────────────
+  const pt_wt    = Math.max(40, Math.min(150, sampleLN(COVARS.WT, 0.15)));
+  const pt_fem   = COVARS.SEX    === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0);
+  const pt_age75 = COVARS.AGE75  === 1 ? 1 : (Math.random() < 0.22 ? 1 : 0);
+  const pt_smoke = COVARS.SMOKE  === 1 ? 1 : (Math.random() < 0.36 ? 1 : 0);
+  const pt_pm    = COVARS.CYP2C19_PM === 1 ? 1 : (Math.random() < 0.03 ? 1 : 0);
 
-  // ── Compute covariate-adjusted individual PK parameters ─────────────────
-  let CLF_ind, CLam_ind, VdF_ind, Vdam_ind, ka_ind, CLF_inh_scale;
+  // ── Individual PK parameters ──────────────────────────────────────────────
+  let CLF_ind, ka_ind;
+  let inh_base  = p.ss_inh  || 0.5;
+  let CLF_inh_scale = 1.0;
 
-  if(drug === 'tic') {
-    // Röshammar 2017: CL/F ∝ (WT/83)^0.25; CL_AM/F ∝ (WT/83)^0.55
-    const wt_eff_CLF  = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLF);
-    const wt_eff_CLam = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLam);
-    const sex_CLF  = pt_female ? p.SEX_f_CLF  : 1.0;
-    const sex_CLam = pt_female ? p.SEX_f_CLam : 1.0;
-    const age_CLam = pt_age75  ? p.AGE75_CLam : 1.0;
-    const smoke_CL = pt_smoke  ? p.SMOKE_CLF  : 1.0;
-    CLF_ind  = sampleLN(p.CLF  * wt_eff_CLF  * sex_CLF  * smoke_CL, p.iiv_CLF);
-    CLam_ind = sampleLN(p.CLam * wt_eff_CLam * sex_CLam * age_CLam, p.iiv_CLam);
-    VdF_ind  = sampleLN(p.VdF,  p.iiv_VdF);
-    Vdam_ind = sampleLN(p.Vdam, p.iiv_Vdam);
-    CLF_inh_scale = 1; // not used for ticagrelor PD
+  if(drug === 'tic'){
+    // ── Åstrand 2019 PK + Röshammar 2017 covariate multipliers on CL/F ─────
+    // Röshammar 2017 Table 2 exact log-additive covariate structure:
+    const wt_CLF   = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLF);
+    const wt_CLam  = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLam);
+    const sex_CLF   = pt_fem   ? p.SEX_f_CLF   : 1.0;
+    const sex_CLam  = pt_fem   ? p.SEX_f_CLam  : 1.0;
+    const age_CLF   = pt_age75 ? p.AGE75_CLF    : 1.0;
+    const age_CLam  = pt_age75 ? p.AGE75_CLam   : 1.0;
+    const smk_CLF   = pt_smoke ? p.SMOKE_CLF    : 1.0;
+    const smk_CLam  = pt_smoke ? p.SMOKE_CLam   : 1.0;
 
-  } else if(drug === 'clop') {
-    // Bergmann 2017: only CYP2C19*2 significant
-    // CYP2C19 PM: CLF of activation pathway ×0.47 (AUC halved)
-    const cyp_factor = pt_pm ? p.CYP_PM_factor : 1.0;
-    CLF_ind = sampleLN(p.CLF,  p.iiv_CLF);  // parent CLF not affected
-    VdF_ind = sampleLN(p.VdF,  p.iiv_VdF);
-    CLam_ind = null; Vdam_ind = null;
-    // CYP2C19 PM → lower FMET-effective → lower platelet inhibition at SS
-    CLF_inh_scale = cyp_factor;  // scales the ss_inh fraction
+    // Åstrand 2019 structural PK parameters + covariate-adjusted CL/F
+    var CLF_cov  = p.CLF  * wt_CLF  * sex_CLF  * age_CLF  * smk_CLF;
+    var CLam_cov = p.CLam * wt_CLam * sex_CLam * age_CLam * smk_CLam;
+    var pt_CLF   = sampleLN(CLF_cov,  p.iiv_CLF);
+    var pt_VcF   = sampleLN(p.VcF,    p.iiv_VcF);
+    var pt_VpF   = sampleLN(p.VpF,    p.iiv_VpF);
+    var pt_QF    = sampleLN(p.QF,     p.iiv_QF);
+    var pt_KTR   = sampleLN(p.KTR,    p.iiv_KTR);
+    var pt_CLam  = sampleLN(CLam_cov, p.iiv_CLam);
+    var pt_VcamF = p.VcamF;
+    var pt_VpamF = sampleLN(p.VpamF,  p.iiv_VpamF || 0.30);
+    var pt_QamF  = p.QamF;
 
-  } else { // pras
-    // Wrishko 2009: CL/F ∝ (WT/85)^0.75; age ≥75 → CL/F ×0.82
-    const wt_eff = Math.pow(pt_wt / p.WT_ref, p.WT_exp_CLF);
-    const age_eff = pt_age75 ? p.AGE75_CLF : 1.0;
-    CLF_ind  = sampleLN(p.CLF * wt_eff * age_eff, p.iiv_CLF);
-    VdF_ind  = sampleLN(p.VdF,  p.iiv_VdF);
-    CLam_ind = null; Vdam_ind = null;
-    CLF_inh_scale = 1;
+    // Åstrand 2019 PD IIV (Table 2):
+    // EC50: log-normal 66% CV; Emax: logit-normal std 0.33
+    var pt_EC50 = Math.max(5, Math.min(500, sampleLN(p.EC50_nmol, p.iiv_EC50)));
+    var logit_Emax0 = Math.log(p.Emax / (1 - p.Emax));
+    var pt_Emax = 1 / (1 + Math.exp(-(logit_Emax0 + (p.iiv_Emax||0.33) * randn())));
+    pt_Emax = Math.max(0.5, Math.min(1.0, pt_Emax));
+
+  } else if(drug === 'clop'){
+    var pt_CLF_c = sampleLN(p.CLF,  p.iiv_CLF);
+    var pt_VdF_c = sampleLN(p.VdF,  p.iiv_VdF);
+    var pt_ka_c  = sampleLN(p.ka,   p.iiv_ka);
+    CLF_inh_scale = pt_pm ? p.CYP_PM_factor : 1.0;
+    inh_base = inh_base * CLF_inh_scale;
+  } else {
+    // Prasugrel: Ernest 2008 Table 2 — exponential WT, age≥75
+    const wt_eff   = Math.exp((pt_wt - p.WT_ref) * p.WT_exp_coef);
+    const age_eff  = pt_age75 ? p.AGE75_CLF : 1.0;
+    const dose_eff = 1 + p.CLF_dose_factor; // 10mg MD factor
+    var pt_CLF_p  = sampleLN(p.CLF * wt_eff * age_eff * dose_eff, p.iiv_CLF);
+    var pt_VdF_p  = sampleLN(p.VdF, 0.25);
+    var pt_k12    = sampleLN(p.k12, 0.30);
+    var pt_k13    = sampleLN(p.k13 * (1 + p.k13_10mg_factor), 0.30);
+    var pt_CL32F  = sampleLN(p.CL32F, p.iiv_CL32F);
+    var pt_V3F    = sampleLN(p.V3F,   p.iiv_V3F);
   }
 
-  ka_ind = sampleLN(p.ka, p.iiv_ka);
-  const kEl = CLF_ind / VdF_ind;
+  // ── State variables ───────────────────────────────────────────────────────
+  // Ticagrelor: 8 transit compartments + central (Ac) + peripheral (Ap)
+  //             + metabolite central (Am) + metabolite peripheral (Amp)
+  const N_tr = 8;
+  let tr = new Array(N_tr).fill(0); // transit compartments
+  let Ac=0, Ap=0, Am=0, Amp=0;
+  // Prasugrel: dose depot (zero-order), Pras-AM (Ac2), thiolactone (Ath + Athp)
+  let Ac2=0, Ath=0, Athp=0, dose_rem=0, dose_t_end=0;
+  // Clopidogrel: gut (Ag_c), Clop-AM (Ac_c)
+  let Ag_c=0, Ac_c=0;
 
-  // ── ODE state ─────────────────────────────────────────────────────────────
-  let Ag = 0, Ac = 0, Am = 0;
-
-  // Irreversible: patient-specific SS platelet inhibition (covariate-adjusted)
-  let inh_base = p.ss_inh || 0.5;
-  if(drug === 'clop') inh_base = inh_base * (CLF_inh_scale);
-  // For prasugrel: lower WT → higher AUC → slightly higher SS inhibition
-  if(drug === 'pras') {
-    const aug = CLF_ind < p.CLF ? (p.CLF / CLF_ind - 1) * 0.3 : 0;
-    inh_base = Math.min(0.92, inh_base + aug);
-  }
-  let inh = sampleLN(inh_base, p.iiv_inh || 0.3);
-  inh = Math.min(0.92, Math.max(0.05, inh));
-  let plat_inh = inh;
+  let plat_inh = Math.min(0.95, Math.max(0.05,
+    sampleLN(inh_base, p.iiv_inh || 0.30)));
 
   const out = [];
   let lastH = -1;
@@ -707,57 +756,118 @@ function simPatient(drug, sched, pat, days){
     const day = Math.floor(t / 24);
     const hr  = t % 24;
 
-    // Dosing events
-    if(p.dpd === 2){
-      const dh = pat === 'delayed' ? [8,10] : [8,20];
+    // ── Dosing ───────────────────────────────────────────────────────────────
+    if(drug === 'tic'){
+      const dh = pat === 'delayed' ? [8, 10] : [8, 20];
       for(let k = 0; k < 2; k++){
         if(Math.abs(hr - dh[k]) < dt * 0.6){
           const di = day * 2 + k;
-          if(di < sched.length && sched[di]) Ag += p.dose_mg;
+          if(di < sched.length && sched[di]){
+            // Dose enters first transit compartment after lag time
+            // For simplicity: add dose to tr[0] directly (lag implemented via transit)
+            tr[0] += p.dose_mg;
+          }
         }
       }
-    } else {
+    } else if(drug === 'clop'){
       if(Math.abs(hr - 8) < dt * 0.6){
-        if(day < sched.length && sched[day]) Ag += p.dose_mg;
+        if(day < sched.length && sched[day]) Ag_c += p.dose_mg;
+      }
+    } else {
+      // Prasugrel: zero-order input over D1 hours (Ernest 2008)
+      if(Math.abs(hr - 8) < dt * 0.6){
+        if(day < sched.length && sched[day]){
+          dose_rem = p.dose_mg;
+          dose_t_end = t + p.D1;
+        }
       }
     }
 
-    // ODE
-    const dAg = -ka_ind * Ag;
-    const dAc = ka_ind * Ag - kEl * Ac;
-    Ag = Math.max(0, Ag + dAg * dt);
-    Ac = Math.max(0, Ac + dAc * dt);
-    let Ceff_ngmL = (Ac / VdF_ind) * 1000;
+    // ── ODEs ─────────────────────────────────────────────────────────────────
+    let Ceff_ngmL = 0;
+    let pru_out = 0;
 
-    if(p.reversible){
-      const kEm      = CLam_ind / Vdam_ind;
-      const form_rate = (CLF_ind * p.FMET / VdF_ind) * Ac;
-      Am = Math.max(0, Am + (form_rate - kEm * Am) * dt);
-      const Cam_ngmL = (Am / Vdam_ind) * 1000;
-      Ceff_ngmL = (Ceff_ngmL + Cam_ngmL) * 0.5;
+    if(drug === 'tic'){
+      // Erlang transit chain: tr[0] → tr[1] → ... → tr[N-1] → central
+      // Each step: dtr[i]/dt = KTR×tr[i-1] - KTR×tr[i]
+      // dAc/dt = KTR×tr[N-1] - (CL/Vc + Q/Vc)×Ac + (Q/Vp)×Ap
+      // dAp/dt = (Q/Vc)×Ac - (Q/Vp)×Ap
+      const ktr = pt_KTR;
+      const kEl  = pt_CLF  / pt_VcF;
+      const kcp  = pt_QF   / pt_VcF;
+      const kpc  = pt_QF   / pt_VpF;
+      const kElm = pt_CLam / pt_VcamF;
+      const kcpm = pt_QamF / pt_VcamF;
+      const kpcm = pt_QamF / pt_VpamF;
+      const form = (pt_CLF * p.FMET / pt_VcF) * Ac; // mg/h → metabolite formation
+
+      // Euler step for transit chain
+      const dtr = new Array(N_tr);
+      dtr[0] = -ktr * tr[0];
+      for(let i = 1; i < N_tr; i++) dtr[i] = ktr * (tr[i-1] - tr[i]);
+      const dAc  = ktr * tr[N_tr-1] - kEl * Ac - kcp * Ac + kpc * Ap;
+      const dAp  = kcp * Ac - kpc * Ap;
+      const dAm  = form - kElm * Am - kcpm * Am + kpcm * Amp;
+      const dAmp = kcpm * Am - kpcm * Amp;
+
+      for(let i = 0; i < N_tr; i++) tr[i] = Math.max(0, tr[i] + dtr[i] * dt);
+      Ac  = Math.max(0, Ac  + dAc  * dt);
+      Ap  = Math.max(0, Ap  + dAp  * dt);
+      Am  = Math.max(0, Am  + dAm  * dt);
+      Amp = Math.max(0, Amp + dAmp * dt);
+
+      // C in ng/mL (parent central) and nmol/L (for PD, MW=522.6)
+      const C_ngmL  = (Ac / pt_VcF) * 1000;
+      const C_nmolL = C_ngmL / 0.5226;
+      Ceff_ngmL = C_ngmL;
+
+      // PD: sigmoidal Imax (Åstrand 2019) — ticagrelor parent only
+      const ratio = Math.pow(Math.max(0, C_nmolL) / pt_EC50, p.gamma);
+      pru_out = Math.max(0, Math.round(p.PRU0 * (1 - pt_Emax * ratio / (1 + ratio))));
+
+    } else if(drug === 'clop'){
+      const kEl_c = pt_CLF_c / pt_VdF_c;
+      const dAg_c = -pt_ka_c * Ag_c;
+      const dAc_c =  pt_ka_c * Ag_c - kEl_c * Ac_c;
+      Ag_c = Math.max(0, Ag_c + dAg_c * dt);
+      Ac_c = Math.max(0, Ac_c + dAc_c * dt);
+      Ceff_ngmL = (Ac_c / pt_VdF_c) * 1000;
+
+    } else {
+      // Prasugrel Ernest 2008 multi-compartmental ODE
+      const rate_in = (dose_rem > 0 && t < dose_t_end) ? p.dose_mg / p.D1 : 0;
+      if(rate_in > 0) dose_rem = Math.max(0, dose_rem - rate_in * dt);
+      const f_am    = pt_k12 / (pt_k12 + pt_k13);
+      const f_thiol = pt_k13 / (pt_k12 + pt_k13);
+      const kEl2    = pt_CLF_p  / pt_VdF_p;
+      const kEl_th  = pt_CL32F  / pt_V3F;
+      const dAc2    = rate_in * f_am    + kEl_th * Ath - kEl2 * Ac2;
+      const dAth    = rate_in * f_thiol - kEl_th * Ath - p.k34 * Ath + p.k43 * Athp;
+      const dAthp   = p.k34 * Ath - p.k43 * Athp;
+      Ac2  = Math.max(0, Ac2  + dAc2  * dt);
+      Ath  = Math.max(0, Ath  + dAth  * dt);
+      Athp = Math.max(0, Athp + dAthp * dt);
+      Ceff_ngmL = (Ac2 / pt_VdF_p) * 1000;
     }
 
-    if(!p.reversible && Math.abs(hr - 8.1) < dt){
-      const nf    = 1 / p.platelet_lifespan;
-      const taken = day < sched.length ? sched[day] : false;
-      plat_inh = taken
-        ? plat_inh * (1 - nf) + nf * inh
-        : plat_inh * (1 - nf) + nf * 0;
-      plat_inh = Math.max(0, Math.min(0.99, plat_inh));
+    // ── Irreversible PD: daily platelet pool update ───────────────────────────
+    if(drug !== 'tic'){
+      if(Math.abs(hr - 8.05) < dt * 0.6){
+        const nf    = 1 / p.platelet_lifespan;
+        const taken = day < sched.length ? sched[day] : false;
+        plat_inh = taken
+          ? plat_inh * (1 - nf) + nf * Math.min(0.95, Math.max(0.05,
+              sampleLN(inh_base, p.iiv_inh || 0.30)))
+          : plat_inh * (1 - nf);
+        plat_inh = Math.max(0, Math.min(0.99, plat_inh));
+      }
+      pru_out = Math.max(0, Math.round(p.PRU0 * (1 - plat_inh)));
     }
 
     const hFloor = Math.floor(t);
     if(hFloor !== lastH && t >= hFloor){
       lastH = hFloor;
-      let pru;
-      if(p.reversible){
-        const C     = Math.max(0, Ceff_ngmL);
-        const ratio = Math.pow(C / p.EC50, p.gamma);
-        pru = Math.max(0, Math.round(p.PRU0 * (1 - p.Emax * ratio / (1 + ratio))));
-      } else {
-        pru = Math.max(0, Math.round(p.PRU0 * (1 - plat_inh)));
-      }
-      out.push({ t: hFloor, C: Math.max(0, Ceff_ngmL), pru, inh: plat_inh });
+      out.push({ t: hFloor, C: Math.max(0, Ceff_ngmL), pru: pru_out, inh: plat_inh });
     }
   }
   return out;
