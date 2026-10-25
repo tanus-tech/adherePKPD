@@ -174,7 +174,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bo
 <div class="sb-sec" style="font-size:.6rem;color:#444;line-height:1.65">
   <strong style="color:#666;display:block;margin-bottom:.2rem">PK sources</strong>
   Ticagrelor: Li 2016 PLATO/DISPERSE-2; Roshammar 2017 PEGASUS<br>
-  Clopidogrel H4: Lechat 2013; Bergmann 2017<br>
+  Clopidogrel H4: Lechat 2013; Danielak 2017<br>
   Prasugrel AM: Ernest 2008; NCT01591317<br>
   <strong style="color:#666;display:block;margin-top:.4rem;margin-bottom:.2rem">PD sources</strong>
   Ticagrelor: Astrand 2019; Amilon 2019<br>
@@ -459,7 +459,7 @@ const P = {
       ['PPI co-administration','Not significant',    'Bergmann 2017'],
       ['CYP2C19*17',           'Not significant',    'Bergmann 2017'],
       ['CYP2C19*2 carrier',    'AUC_H4 ×0.47',      'Bergmann 2017 (5.94 vs 12.70 ng·h/mL, p=0.004)'],
-      ['SS PRU (EM)',          '~160',               'CAPITAL registry; Spiliopoulos data'],
+      ['SS PRU (EM)',          '~160',               'CAPITAL registry'],
       ['SS PRU (PM)',          '~240 (estimated)',   'Based on reduced H4 AUC'],
     ],
   },
@@ -750,6 +750,8 @@ function simPatient(drug, sched, pat, days){
 
   const out = [];
   let lastH = -1;
+  const doseFired  = new Set(); // (day*10+k) → fire dose exactly once per event
+  const platFired  = new Set(); // day → fire platelet update exactly once per day
 
   for(let step = 0; step < nT; step++){
     const t   = step * dt;
@@ -760,7 +762,9 @@ function simPatient(drug, sched, pat, days){
     if(drug === 'tic'){
       const dh = pat === 'delayed' ? [8, 10] : [8, 20];
       for(let k = 0; k < 2; k++){
-        if(Math.abs(hr - dh[k]) < dt * 0.6){
+        const dkey = day * 10 + k;
+        if(Math.abs(hr - dh[k]) < dt * 0.9 && !doseFired.has(dkey)){
+          doseFired.add(dkey);
           const di = day * 2 + k;
           if(di < sched.length && sched[di]){
             // Dose enters first transit compartment after lag time
@@ -770,12 +774,16 @@ function simPatient(drug, sched, pat, days){
         }
       }
     } else if(drug === 'clop'){
-      if(Math.abs(hr - 8) < dt * 0.6){
+      const dkey = day;
+      if(Math.abs(hr - 8) < dt * 0.9 && !doseFired.has(dkey)){
+        doseFired.add(dkey);
         if(day < sched.length && sched[day]) Ag_c += p.dose_mg;
       }
     } else {
       // Prasugrel: zero-order input over D1 hours (Ernest 2008)
-      if(Math.abs(hr - 8) < dt * 0.6){
+      const dkey = day;
+      if(Math.abs(hr - 8) < dt * 0.9 && !doseFired.has(dkey)){
+        doseFired.add(dkey);
         if(day < sched.length && sched[day]){
           dose_rem = p.dose_mg;
           dose_t_end = t + p.D1;
@@ -792,6 +800,11 @@ function simPatient(drug, sched, pat, days){
       // Each step: dtr[i]/dt = KTR×tr[i-1] - KTR×tr[i]
       // dAc/dt = KTR×tr[N-1] - (CL/Vc + Q/Vc)×Ac + (Q/Vp)×Ap
       // dAp/dt = (Q/Vc)×Ac - (Q/Vp)×Ap
+      //
+      // NUMERICAL STABILITY FIX: KTR=10.1/h, dt=0.1h → KTR*dt=1.01 ≥ 1 (UNSTABLE).
+      // Use N_ODE_SUB=5 sub-steps: dt_sub=0.02h → KTR*dt_sub=0.202 (stable & accurate).
+      const N_SUB = 5;
+      const dt_sub = dt / N_SUB;
       const ktr = pt_KTR;
       const kEl  = pt_CLF  / pt_VcF;
       const kcp  = pt_QF   / pt_VcF;
@@ -799,22 +812,23 @@ function simPatient(drug, sched, pat, days){
       const kElm = pt_CLam / pt_VcamF;
       const kcpm = pt_QamF / pt_VcamF;
       const kpcm = pt_QamF / pt_VpamF;
-      const form = (pt_CLF * p.FMET / pt_VcF) * Ac; // mg/h → metabolite formation
 
-      // Euler step for transit chain
-      const dtr = new Array(N_tr);
-      dtr[0] = -ktr * tr[0];
-      for(let i = 1; i < N_tr; i++) dtr[i] = ktr * (tr[i-1] - tr[i]);
-      const dAc  = ktr * tr[N_tr-1] - kEl * Ac - kcp * Ac + kpc * Ap;
-      const dAp  = kcp * Ac - kpc * Ap;
-      const dAm  = form - kElm * Am - kcpm * Am + kpcm * Amp;
-      const dAmp = kcpm * Am - kpcm * Amp;
+      for(let sub = 0; sub < N_SUB; sub++){
+        const form = (pt_CLF * p.FMET / pt_VcF) * Ac; // mg/h → metabolite formation
+        const dtr = new Array(N_tr);
+        dtr[0] = -ktr * tr[0];
+        for(let i = 1; i < N_tr; i++) dtr[i] = ktr * (tr[i-1] - tr[i]);
+        const dAc  = ktr * tr[N_tr-1] - kEl * Ac - kcp * Ac + kpc * Ap;
+        const dAp  = kcp * Ac - kpc * Ap;
+        const dAm  = form - kElm * Am - kcpm * Am + kpcm * Amp;
+        const dAmp = kcpm * Am - kpcm * Amp;
 
-      for(let i = 0; i < N_tr; i++) tr[i] = Math.max(0, tr[i] + dtr[i] * dt);
-      Ac  = Math.max(0, Ac  + dAc  * dt);
-      Ap  = Math.max(0, Ap  + dAp  * dt);
-      Am  = Math.max(0, Am  + dAm  * dt);
-      Amp = Math.max(0, Amp + dAmp * dt);
+        for(let i = 0; i < N_tr; i++) tr[i] = Math.max(0, tr[i] + dtr[i] * dt_sub);
+        Ac  = Math.max(0, Ac  + dAc  * dt_sub);
+        Ap  = Math.max(0, Ap  + dAp  * dt_sub);
+        Am  = Math.max(0, Am  + dAm  * dt_sub);
+        Amp = Math.max(0, Amp + dAmp * dt_sub);
+      }
 
       // C in ng/mL (parent central) and nmol/L (for PD, MW=522.6)
       const C_ngmL  = (Ac / pt_VcF) * 1000;
@@ -851,8 +865,13 @@ function simPatient(drug, sched, pat, days){
     }
 
     // ── Irreversible PD: daily platelet pool update ───────────────────────────
+    // BUG FIX: use platFired set so update fires exactly ONCE per day.
+    // With dt=0.1h: abs(hr-8.05) < dt*0.6 = 0.06 fires at BOTH hr=8.0 AND hr=8.1
+    // (|8.0-8.05|=0.05 < 0.06 AND |8.1-8.05|=0.05 < 0.06) → platelet updated TWICE.
+    // Fixed: fire when within 0.9*dt of 8.05, but only once per day via platFired.
     if(drug !== 'tic'){
-      if(Math.abs(hr - 8.05) < dt * 0.6){
+      if(Math.abs(hr - 8.05) < dt * 0.9 && !platFired.has(day)){
+        platFired.add(day);
         const nf    = 1 / p.platelet_lifespan;
         const taken = day < sched.length ? sched[day] : false;
         plat_inh = taken
