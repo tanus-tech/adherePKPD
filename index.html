@@ -178,7 +178,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin-top:.15rem;margin-bo
   Prasugrel AM: Ernest 2008; NCT01591317<br>
   <strong style="color:#666;display:block;margin-top:.4rem;margin-bottom:.2rem">PD sources</strong>
   Ticagrelor: Astrand 2019; Amilon 2019<br>
-  Irrev.: Platelet turnover model, calibrated to CAPITAL registry / Alexopoulos 2013
+  Irrev.: Platelet turnover model; clopi PRU₀=261 calibrated to SS PRU≈164 (Paré 2011); pras PRU₀=205 calibrated to SS PRU≈64 (Gurbel/JAMA 2012)
 </div>
 </aside>
 
@@ -412,12 +412,12 @@ const P = {
     iiv_CLF: 0.55,   // reflects ~85% IIV on Cmax
     iiv_VdF: 0.40,
     reversible:false,
-    PRU0:280, platelet_lifespan:10,
-    ss_inh:0.43,
+    PRU0:261, platelet_lifespan:10,
+    ss_inh:0.372,  // 1 − 164/261; calibrated to SS trough PRU ≈ 164 (EM, Paré 2011; matches R script)
     iiv_inh:0.55,
     pkUnit:'ng/mL  (H4 active thiol metabolite)',
     pkSrc:'Danielak et al. 2017 Eur J Clin Pharmacol 73(12):1623-1632 (n=63 PCI pts, NONMEM)',
-    pdSrc:'Platelet turnover model; calibrated to CAPITAL registry (PRU ~160, EM)',
+    pdSrc:'Platelet turnover model; PRU₀=261 (Åstrand 2019); ss_inh calibrated to SS PRU ≈ 164 (EM, Paré 2011)',
     rows:[
       ['Cmax H4 (75 mg)',      '~7 ng/mL (median)', 'Lechat 2013'],
       ['AUC H4 (75 mg)',       '~11 ng·h/mL',       'Lechat 2013'],
@@ -431,7 +431,7 @@ const P = {
       ['PPI co-administration','Not significant',    'Danielak 2017'],
       ['CYP2C19*17',           'Not significant',    'Danielak 2017'],
       ['CYP2C19*2 carrier',    'AUC_H4 ×0.47',      'Danielak 2017 (5.94 vs 12.70 ng·h/mL, p=0.004)'],
-      ['SS PRU (EM)',          '~160',               'CAPITAL registry'],
+      ['SS PRU (EM)',          '~164',               'Paré 2011; calibrated (R script)'],
       ['SS PRU (PM)',          '~240 (estimated)',   'Based on reduced H4 AUC'],
     ],
   },
@@ -469,12 +469,12 @@ const P = {
     iiv_CL32F: 0.311, // 31.1% CV on CL32/F
     iiv_V3F:   0.357, // 35.7% CV on V3/F
     reversible:false,
-    PRU0:280, platelet_lifespan:10,
-    ss_inh:0.64,
+    PRU0:205, platelet_lifespan:10,
+    ss_inh:0.688,  // 1 − 64/205; calibrated to SS trough PRU ≈ 64 (Gurbel/JAMA 2012; matches R script)
     iiv_inh:0.30,
     pkUnit:'ng/mL  (R-138727 Pras-AM)',
     pkSrc:'Ernest et al. 2008 J Pharmacokinet Pharmacodyn 35:593-618 (Table 2)',
-    pdSrc:'Ernest et al. 2008 (irreversible platelet pool model); PRU calibrated to ~100 (Alexopoulos 2013)',
+    pdSrc:'Platelet turnover model; PRU₀=205 (Tantry 2013); ss_inh calibrated to SS PRU ≈ 64 (Gurbel/JAMA 2012)',
     rows:[
       ['Structural model',    'Multi-cmt zero-order absorption', 'Ernest 2008 (Fig. 3)'],
       ['D1 (absorption)',     '0.473 h (RSE 9.98%)',             'Ernest 2008 Table 2'],
@@ -489,7 +489,7 @@ const P = {
       ['Age ≥75 → CL20/F',    '×0.82 (AUC +22%)',              'Wrishko 2009 (TRITON-TIMI 38)'],
       ['Sex',                  'Not significant',               'Wrishko 2009'],
       ['Renal/BMI/DM/smoking', 'Not significant',               'Wrishko 2009'],
-      ['SS PRU',               '~100',                          'Alexopoulos 2013'],
+      ['SS PRU',               '~64',                           'Gurbel/JAMA 2012; calibrated (R script)'],
     ],
   },
 };
@@ -1105,18 +1105,18 @@ function drawInsight(p,pat,hprPct,winPct,lprPct){
       delayed:{cls:'danger',msg:'Collapsing BID dosing to a 2-hour morning window (08:00 and 10:00) eliminates afternoon and evening trough coverage. Despite PDC = 1.0, the ~20-hour drug-free window produces PRU excursions equivalent to a missed dose every day. The PK panel shows the characteristic double-peak followed by a long trough; the PRU panel shows daily HPR excursions.'},
     },
     clop:{
-      perfect:{cls:'warn',msg:'Clopidogrel (CYP2C19 EM) at full adherence: the platelet pool model predicts SS PRU ≈ 160, with ~40–50% of time in the therapeutic window (CAPITAL registry: 50%; Spiliopoulos: 42%). The PK/PD scatter is a vertical cloud near C ≈ 0 — this is mechanistically correct for irreversible inhibitors: PRU is determined by the platelet pool state, not current drug concentration. Enormous IIV in H4 Cmax (~85% CV) is reflected in the wide PI band.'},
+      perfect:{cls:'warn',msg:'Clopidogrel (CYP2C19 EM) at full adherence: the platelet pool model predicts SS PRU ≈ 164, with ~99% of patients in the therapeutic window (85–208 PRU). The PK/PD scatter is a vertical cloud near C ≈ 0 — this is mechanistically correct for irreversible inhibitors: PRU is determined by the platelet pool state, not current drug concentration. Enormous IIV in H4 Cmax (~85% CV) is reflected in the wide PI band.'},
       random:{cls:'ok',msg:'Irreversible binding buffers random missed doses effectively. A single missed day allows ~10% of platelets to replenish uninhibited (1/platelet lifespan), raising PRU by ~28 PRU. At PDC = 0.75, geometric mean PRU remains within or near the therapeutic window for most of the simulation.'},
-      cluster:{cls:'warn',msg:'A 5-day drug holiday progressively raises PRU by ~28 PRU/day (=280×1/10 uninhibited fraction). After 5 days: PRU ≈ 160 + 140 = 300 PRU in extreme cases; more typically ~160 + 5×18 ≈ 250 PRU (accounting for partial ongoing inhibition). Re-establishment takes 3–5 days of dosing to rebuild the inhibited platelet pool.'},
+      cluster:{cls:'warn',msg:'A 5-day drug holiday progressively raises PRU by ~26 PRU/day (=261×1/10 uninhibited fraction). After 5 days: PRU ≈ 164 + 130 ≈ 295 PRU in extreme cases; more typically rising ~18 PRU/day net (accounting for partial ongoing inhibition). Re-establishment takes 3–5 days of dosing to rebuild the inhibited platelet pool.'},
       decay:{cls:'warn',msg:'Gradual decay raises the uninhibited platelet fraction slowly but cumulatively. Late-period geometric mean PRU approaches and crosses HPR in severe decay scenarios. Key difference from ticagrelor: the PRU rise is slow (days, not hours), giving a longer window for clinical detection and intervention.'},
-      periodic:{cls:'ok',msg:'Weekend 2-day gaps raise PRU by ~56 PRU (2 × ~28 PRU/day). From SS PRU 160 → ~216 by Sunday evening — crossing HPR threshold for the mean patient. However, re-inhibition is rapid on Monday dose. This pattern is better tolerated by clopidogrel than ticagrelor but still clinically relevant.'},
+      periodic:{cls:'ok',msg:'Weekend 2-day gaps raise PRU by ~52 PRU (2 × ~26 PRU/day). From SS PRU 164 → ~216 by Sunday evening — approaching HPR threshold for the mean patient. However, re-inhibition is rapid on Monday dose. This pattern is better tolerated by clopidogrel than ticagrelor but still clinically relevant.'},
       delayed:{cls:'ok',msg:'Pattern not applicable — clopidogrel is QD. Once-daily dosing eliminates inter-dose timing sensitivity. Minor timing variation (08:00 ± 2h) has negligible PD consequence given the very short H4 half-life (~30 min) and irreversible platelet binding mechanism.'},
     },
     pras:{
-      perfect:{cls:'ok',msg:'Prasugrel at full adherence: SS PRU ≈ 100, with ~60–75% of time in the therapeutic window. Lower IIV than clopidogrel (CV ~36% vs ~85% on Cmax), no CYP2C19 dependence, faster onset (Tmax ~0.5h). The PK/PD scatter shows a tighter cluster than clopidogrel, confirming more consistent active metabolite exposure across the population. Most patients are comfortably within the 85–208 window at standard dosing.'},
-      random:{cls:'ok',msg:'Most robust drug for random sparse non-adherence. Each missed day raises PRU by ~18 PRU (=280×1/10×0.64 partial replacement). At PDC = 0.75, geometric mean PRU remains largely within the therapeutic window. Recommended agent for patients with Tannous-predicted low PDC and random adherence pattern.'},
+      perfect:{cls:'ok',msg:'Prasugrel at full adherence: SS PRU ≈ 64, with ~78% of patients in LPR (&lt;85 PRU) reflecting deeper inhibition than clopidogrel. Lower IIV than clopidogrel (CV ~36% vs ~85% on Cmax), no CYP2C19 dependence, faster onset (Tmax ~0.5h). The PK/PD scatter shows a tighter cluster than clopidogrel, confirming more consistent active metabolite exposure across the population. The high LPR fraction at standard dosing underlies prasugrel\'s known bleeding-risk profile.'},
+      random:{cls:'ok',msg:'Most robust drug for random sparse non-adherence. Each missed day raises PRU by ~21 PRU (=205×1/10 uninhibited replacement). Starting from a deep SS PRU ~64, even with PDC = 0.75 the geometric mean PRU remains largely within the therapeutic window. Recommended agent for patients with Tannous-predicted low PDC and random adherence pattern.'},
       cluster:{cls:'warn',msg:'A 5-day drug holiday raises PRU by ~90 PRU (5 × ~18 PRU/day) from SS ≈ 100 → ~190, approaching but not crossing HPR for the geometric mean. The 95th percentile may cross HPR. Superior to ticagrelor (PRU rebounds to ~270 in same scenario) but inferior to perfect adherence.'},
-      decay:{cls:'ok',msg:'Gradual decay is well-tolerated by prasugrel. High starting inhibition (SS PRU ~100) and irreversible binding mean that even as adherence wanes, the platelet pool remains partially inhibited by accumulated prior doses. Late-period geometric mean PRU approaches the HPR boundary only in very severe decay patterns.'},
+      decay:{cls:'ok',msg:'Gradual decay is well-tolerated by prasugrel. Deep starting inhibition (SS PRU ~64, mostly LPR) and irreversible binding mean that even as adherence wanes, the platelet pool remains substantially inhibited by accumulated prior doses. Geometric mean PRU rises slowly and remains in the therapeutic window for most of the simulation window.'},
       periodic:{cls:'ok',msg:'Weekend gaps raise PRU by ~56 PRU from SS (≈100 → 156). This remains firmly within the therapeutic window for the geometric mean patient. The pharmacodynamically safest drug-pattern combination in the simulator. Platelet turnover kinetics make 2-day gaps well-tolerated by all irreversible QD agents.'},
       delayed:{cls:'ok',msg:'Pattern not applicable — prasugrel is QD. Rapid Tmax (~0.5h) and irreversible binding make minor timing variation inconsequential. Switching patients with suspected ticagrelor delayed-dose behaviour to prasugrel entirely eliminates this source of pharmacodynamic variability.'},
     },
